@@ -73,7 +73,7 @@ const english: Record<string, string> = {
   "stundtransfer.files.more": "… and {count} more",
   "stundtransfer.files.clear": "Remove all",
   "stundtransfer.files.rename": "Rename",
-  "stundtransfer.files.renamed-from": "was {name}",
+  "stundtransfer.files.revert": "Restore the original name",
   "stundtransfer.files.ignored":
     "{count, plural, one {# system file ignored} other {# system files ignored}} (.DS_Store, Thumbs.db…)",
   "stundtransfer.files.duplicate": "Already added: {name}",
@@ -238,7 +238,7 @@ const french: Record<string, string> = {
   "stundtransfer.files.more": "… et {count} autres",
   "stundtransfer.files.clear": "Tout retirer",
   "stundtransfer.files.rename": "Renommer",
-  "stundtransfer.files.renamed-from": "avant : {name}",
+  "stundtransfer.files.revert": "Remettre le nom d'origine",
   "stundtransfer.files.ignored":
     "{count, plural, one {# fichier système ignoré} other {# fichiers système ignorés}} (.DS_Store, Thumbs.db…)",
   "stundtransfer.files.duplicate": "Déjà ajouté : {name}",

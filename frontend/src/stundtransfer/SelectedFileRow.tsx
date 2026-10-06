@@ -1,20 +1,25 @@
-// StundTransfer: one file of the deposit page list, with a pencil to rename it
-// before sending (the folders of the file stay the same).
+// StundTransfer: one file of the deposit page list. Pencil to rename it,
+// round arrow to restore the original name (shown struck through when renamed).
 import { ActionIcon, CloseButton, Group, Text, TextInput, Tooltip } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { TbCheck, TbPencil } from "react-icons/tb";
+import { TbCheck, TbPencil, TbRotate } from "react-icons/tb";
 import useTranslate from "../hooks/useTranslate.hook";
-import { SelectedFile, cleanNewName, displayName } from "./depositFiles";
+import { SelectedFile, baseName, cleanNewName } from "./depositFiles";
 
 const SelectedFileRow = ({
   file,
+  name,
   sizeLabel,
   onRename,
+  onRevert,
   onRemove,
 }: {
   file: SelectedFile;
+  // Name used on the NAS (chosen, automatic or original)
+  name: string;
   sizeLabel: string;
   onRename: (name: string | undefined) => void;
+  onRevert: () => void;
   onRemove: () => void;
 }) => {
   const t = useTranslate();
@@ -23,7 +28,8 @@ const SelectedFileRow = ({
   const input = useRef<HTMLInputElement>(null);
 
   const folders = file.path.split("/").slice(0, -1);
-  const originalName = file.path.split("/").pop() ?? file.path;
+  const originalName = baseName(file.path);
+  const renamed = name !== originalName;
 
   // Select the name without its extension, ready to type
   useEffect(() => {
@@ -34,14 +40,22 @@ const SelectedFileRow = ({
   }, [editing]);
 
   const startEditing = () => {
-    setDraft(displayName(file));
+    setDraft(name);
     setEditing(true);
   };
 
   const save = () => {
-    onRename(cleanNewName(file.path, draft));
+    const next = cleanNewName(file.path, draft);
+    // Unchanged: keep an automatic name automatic (it follows the form)
+    if ((next ?? originalName) !== name) onRename(next);
     setEditing(false);
   };
+
+  const folderPrefix = folders.length > 0 && (
+    <Text span color="dimmed">
+      {folders.join("/")}/
+    </Text>
+  );
 
   return (
     <Group position="apart" noWrap spacing="xs">
@@ -67,20 +81,16 @@ const SelectedFileRow = ({
           }
         />
       ) : (
-        <Group spacing={4} noWrap sx={{ minWidth: 0 }}>
+        <Group spacing={6} noWrap sx={{ minWidth: 0 }}>
           <Text size="sm" truncate sx={{ minWidth: 0 }}>
-            {folders.length > 0 && (
-              <Text span color="dimmed">
-                {folders.join("/")}/
+            {folderPrefix}
+            {renamed && (
+              <Text span color="dimmed" td="line-through" mr={6}>
+                {originalName}
               </Text>
             )}
-            {displayName(file)}
+            {name}
           </Text>
-          {file.name && (
-            <Text size="xs" color="dimmed" sx={{ whiteSpace: "nowrap" }}>
-              ({t("stundtransfer.files.renamed-from", { name: originalName })})
-            </Text>
-          )}
           <Tooltip label={t("stundtransfer.files.rename")} withArrow>
             <ActionIcon
               size="sm"
@@ -91,6 +101,18 @@ const SelectedFileRow = ({
               <TbPencil size={14} />
             </ActionIcon>
           </Tooltip>
+          {renamed && (
+            <Tooltip label={t("stundtransfer.files.revert")} withArrow>
+              <ActionIcon
+                size="sm"
+                variant="subtle"
+                aria-label={t("stundtransfer.files.revert")}
+                onClick={onRevert}
+              >
+                <TbRotate size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       )}
       <Group spacing="xs" noWrap>

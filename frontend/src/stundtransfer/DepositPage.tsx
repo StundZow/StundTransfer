@@ -36,7 +36,10 @@ import DepositDropzone from "./DepositDropzone";
 import SelectedFileRow from "./SelectedFileRow";
 import {
   SelectedFile,
-  displayPath,
+  automaticNames,
+  baseName,
+  effectiveName,
+  effectivePath,
   fileKey,
   formatDuration,
   formatSize,
@@ -128,6 +131,11 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
     [selected],
   );
   const fieldsFilled = uploaderName.trim() !== "" && videoName.trim() !== "";
+  // "2026-07-22 14-32-10.mkv" -> "Stund - Beamng 1.mkv" (updated while typing)
+  const autoNames = useMemo(
+    () => automaticNames(selected, uploaderName, videoName),
+    [selected, uploaderName, videoName],
+  );
 
   useEffect(() => {
     checkInterruptedUpload();
@@ -293,7 +301,10 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           path: f.path,
           size: f.size,
           lastModified: f.lastModified,
-          name: f.name,
+          name:
+            effectiveName(f, autoNames) !== baseName(f.path)
+              ? effectiveName(f, autoNames)
+              : undefined,
         }));
         registered.push(
           ...(await withNetworkRetry(() => stundTransferService.addFiles(session, batch))),
@@ -302,7 +313,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       await upload(
         session,
         toUploadItems(registered),
-        selected.map(displayPath), // shown on "Reçu", with the new names
+        selected.map((f) => effectivePath(f, autoNames)), // shown on "Reçu", with the new names
         selectedSize,
       );
     } catch (e) {
@@ -388,10 +399,21 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           <SelectedFileRow
             key={f.path}
             file={f}
+            name={effectiveName(f, autoNames)}
             sizeLabel={humanSize(f.size)}
             onRename={(name) =>
               setSelected((current) =>
-                current.map((c) => (c.path === f.path ? { ...c, name } : c)),
+                current.map((c) =>
+                  // Same as the original name: keep it, no automatic name
+                  c.path === f.path ? { ...c, name, keepOriginal: !name } : c,
+                ),
+              )
+            }
+            onRevert={() =>
+              setSelected((current) =>
+                current.map((c) =>
+                  c.path === f.path ? { ...c, name: undefined, keepOriginal: true } : c,
+                ),
               )
             }
             onRemove={() =>

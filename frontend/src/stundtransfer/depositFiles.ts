@@ -9,16 +9,64 @@ export type SelectedFile = {
   lastModified: number;
   // New name chosen with the pencil (folders stay the same)
   name?: string;
+  // The uploader restored the original name: no automatic name
+  keepOriginal?: boolean;
 };
 
-const baseName = (path: string) => path.split("/").pop() ?? path;
+export const baseName = (path: string) => path.split("/").pop() ?? path;
 
-/** Name shown and used on the NAS: the new name if renamed. */
-export const displayName = (f: SelectedFile) => f.name ?? baseName(f.path);
+const splitExtension = (name: string): [string, string] => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+};
 
-/** "Card A/A001.MP4" renamed "Plan drone.MP4" -> "Card A/Plan drone.MP4" */
-export const displayPath = (f: SelectedFile) =>
-  [...f.path.split("/").slice(0, -1), displayName(f)].join("/");
+/**
+ * Names without a real title: dates and times ("2026-07-22",
+ * "2026-07-22 14-32-10" from OBS, "20260722_143210") and camera or phone
+ * numbering ("VID_20260722_143210", "IMG_1234", "DSC01234", "GX010123",
+ * "C0001", "PXL_..."). Anything with a real word ("Plan 2", "Interview")
+ * is kept.
+ */
+export function isGenericName(fileName: string) {
+  const [base] = splitExtension(fileName);
+  return /^(?:[A-Z]{1,4}[_-]?)?\d[\d\s._\-:()]*$/.test(base.trim());
+}
+
+/**
+ * Automatic names for files without a real title: "Stund - Beamng 1.mkv",
+ * "Stund - Beamng 2.mkv"... in chronological (name) order, or
+ * "Stund - Beamng.mkv" when there is only one. Empty until both fields
+ * are filled.
+ */
+export function automaticNames(
+  files: SelectedFile[],
+  uploaderName: string,
+  videoName: string,
+): Map<string, string> {
+  const names = new Map<string, string>();
+  const who = uploaderName.trim().replace(/[\\/]/g, "_");
+  const what = videoName.trim().replace(/[\\/]/g, "_");
+  if (!who || !what) return names;
+  const generic = files
+    .filter((f) => !f.name && !f.keepOriginal && isGenericName(baseName(f.path)))
+    .sort((a, b) =>
+      baseName(a.path).localeCompare(baseName(b.path), undefined, { numeric: true }),
+    );
+  generic.forEach((f, i) => {
+    const [, extension] = splitExtension(baseName(f.path));
+    const number = generic.length > 1 ? ` ${i + 1}` : "";
+    names.set(f.path, `${who} - ${what}${number}${extension}`);
+  });
+  return names;
+}
+
+/** Name used on the NAS: chosen with the pencil, else automatic, else the original. */
+export const effectiveName = (f: SelectedFile, automatic: Map<string, string>) =>
+  f.name ?? automatic.get(f.path) ?? baseName(f.path);
+
+/** "Card A/2026-07-22.mkv" -> "Card A/Stund - Beamng 1.mkv" */
+export const effectivePath = (f: SelectedFile, automatic: Map<string, string>) =>
+  [...f.path.split("/").slice(0, -1), effectiveName(f, automatic)].join("/");
 
 /**
  * Cleans a new name typed by the uploader. Returns undefined when it is
