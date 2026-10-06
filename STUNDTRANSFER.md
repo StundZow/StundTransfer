@@ -10,7 +10,7 @@ Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé 
 
 | Qui | Où | Ce qu'il voit |
 |---|---|---|
-| Visiteur | `https://stundtransfer.synology.me/` | La page de dépôt directement (si **Dépôt public** est activé), une icône « personne » en haut à droite pour se connecter |
+| Visiteur | l'adresse publique, ex. `https://<ton-nom>.synology.me/` | La page de dépôt directement (si **Dépôt public** est activé), une icône « personne » en haut à droite pour se connecter |
 | Visiteur | lien de dépôt `…/upload/<jeton>` | La page de dépôt de ce lien |
 | Admin (connecté) | **Administration → Dépôts reçus** (ou menu liens) | **Tous** les dépôts : qui, quelle vidéo, quand, nombre de fichiers, taille, statut, détail fichier par fichier, « Réessayer le rangement » en cas d'erreur |
 | Admin (connecté) | **Administration → Paramètres** | Tous les réglages : section **StundTransfer**, nom de l'appli et logo (Général), couleurs (Apparence), etc. |
@@ -96,9 +96,9 @@ services:
 
 ## Mettre à jour le NAS avec la dernière image StundTransfer
 
-1. Vérifie que le build GitHub est vert : https://github.com/StundZow/pingvin-share-x/actions
-2. Container Manager → **Projet** → `pingvin` → **Arrêter**.
-3. Container Manager → **Image** → `ghcr.io/stundzow/stundtransfer` → **Mettre à jour** (ou supprimer l'image pour forcer le re-téléchargement).
+1. Vérifie que le build GitHub est vert : https://github.com/StundZow/StundTransfer/actions
+2. Container Manager → **Projet** → `pingvin` → **Arrêter**, puis **Nettoyer**.
+3. Container Manager → **Image** → `ghcr.io/stundzow/stundtransfer` → **Supprimer** (force le re-téléchargement).
 4. Container Manager → **Projet** → `pingvin` → **Construire**.
 5. Vérifie que le site s'ouvre.
 
@@ -140,7 +140,9 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/prisma/seed/config.seed.ts` | Sections de réglages `stundtransfer` et `stundtransferpaths` (ajoutées à la fin) |
 | `frontend/src/services/config.service.ts` | Autorise la section `stundtransfer` |
 | `frontend/src/components/admin/configuration/ConfigurationNavBar.tsx` | Entrée « StundTransfer » dans les paramètres |
-| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus » et « Dossier de réception », « Paramètres » ouvre la section StundTransfer, carte « Gestion des partages » cachée sans partage classique |
+| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
+| `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) |
+| `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage |
 
 En cas de conflit lors d'une mise à jour : garder la version officielle du fichier, puis réappliquer ces quelques lignes.
 
