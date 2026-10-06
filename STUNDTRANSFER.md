@@ -48,7 +48,7 @@ Le nom affiché en haut et le logo se changent dans **Paramètres → Général*
 | `STUNDTRANSFER_ROOT_NAME` | nom du dossier monté | Nom affiché dans l'admin (ex. `A - STUND - NAS`) |
 | `STUNDTRANSFER_STAGING_DIR` | `.stundtransfer-en-cours` dans le dossier monté | Envois en cours. Doit être dans le même dossier partagé Synology que la réception pour un rangement instantané |
 
-Le conteneur n'écrit qu'avec les droits de « Tout le monde » (utilisateur interne uid 1000) : le dossier de réception choisi doit avoir **Tout le monde : Lecture + Écriture**, et le dossier monté au moins la lecture pour pouvoir le parcourir.
+Le conteneur lit et écrit avec le compte DSM indiqué par `PUID`/`PGID` (voir « Droits Synology ») : il n'a accès qu'aux dossiers autorisés pour ce compte.
 
 **Pas de `config.yaml`** : quand un `config.yaml` est monté, Pingvin verrouille tous les réglages de l'interface. Pour passer d'un `config.yaml` à l'interface sans rien perdre, conteneur **arrêté** :
 
@@ -72,21 +72,33 @@ services:
       - 3000:3000
     environment:
       - TRUST_PROXY=true
-      - STUNDTRANSFER_TRANSFER_DIR=/transfer
-      - STUNDTRANSFER_STAGING_DIR=/transfer/.en-cours
+      # Compte DSM dédié "stundtransfer" (voir « Droits Synology »)
+      - PUID=1031
+      - PGID=1031
+      # Dossier partagé visible par l'appli ; le dossier de réception se choisit dedans
+      - STUNDTRANSFER_ROOT_DIR=/nas
+      - STUNDTRANSFER_ROOT_NAME=A - STUND - NAS
+      # Envois en cours : même dossier partagé (rangement instantané)
+      - STUNDTRANSFER_STAGING_DIR=/nas/5 - StundTransfer/.en-cours
     volumes:
       - /volume1/docker/pingvin/data:/opt/app/backend/data
       - /volume1/docker/pingvin/data/images:/opt/app/frontend/public/img
-      - "/volume1/A - STUND - NAS/5 - StundTransfer:/transfer"
+      - "/volume1/A - STUND - NAS:/nas"
 ```
 
-**Droits Synology** : le conteneur tourne avec un utilisateur interne (uid 1000). Dans File Station, clic droit sur `5 - StundTransfer` → Propriétés → Autorisation → Créer : **Everyone**, Lecture + Écriture, appliqué à « ce dossier, les sous-dossiers et les fichiers ». Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout est bon, ou `Deposit folders are not usable (…)` avec la raison.
+**Droits Synology** : le conteneur tourne avec un **compte DSM dédié**, il a donc exactement les droits de ce compte.
+
+1. Panneau de configuration → Utilisateur et groupe → **Créer** `stundtransfer` : Lecture/Écriture sur le dossier partagé des rushs et sur `docker`, aucun accès ailleurs, aucune application.
+2. Son numéro : en SSH, `id stundtransfer` (ex. `uid=1031`). Mets-le dans `PUID` **et** `PGID`. Pas `PGID=100` : ce numéro est déjà pris dans l'image.
+3. Ne donne jamais « Everyone » / « Tout le monde » sur le dossier des rushs.
+
+Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout est bon, ou `Deposit folders are not usable (…)` avec la raison.
 
 ## Nouvelle installation (autre NAS)
 
 1. Le NAS doit avoir un processeur **Intel/AMD** (Synology « + », ex. DS224+, DS225+, DS423+). Les modèles ARM (DS223, DS220j…) ne sont pas pris en charge.
-2. Crée un dossier `docker/stundtransfer` et, dans un dossier partagé, le dossier de réception (ex. `Rushs/StundTransfer`) avec les droits **Everyone : Lecture + Écriture** (voir « Droits Synology »).
-3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/...`) à ton NAS.
+2. Crée le compte DSM dédié (voir « Droits Synology ») et le dossier `docker/stundtransfer`.
+3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/...`), `PUID`/`PGID` et `STUNDTRANSFER_ROOT_NAME` à ton NAS. `STUNDTRANSFER_STAGING_DIR` peut être retiré (par défaut : `.stundtransfer-en-cours` à la racine du dossier monté).
 4. Ouvre `http://<ip-du-nas>:3000/auth/signUp` : **le premier compte créé est administrateur**.
 5. Administration → Paramètres :
    - **Partage** → désactive « Autoriser les inscriptions » (sinon n'importe qui peut se créer un compte) ;
