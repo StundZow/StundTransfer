@@ -2,7 +2,7 @@
 
 Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé en outil de **dépôt de rushs** : la personne dit qui elle est et pour quelle vidéo, dépose ses fichiers ou dossiers, et ils arrivent directement dans `<dossier de réception>/<Nom> - <Vidéo>/` sur le NAS. Aucun compte, aucun lien de partage, aucune page de téléchargement.
 
-- Branche de travail : `stundtransfer` (partie de la version officielle **v1.22.3**)
+- Branche de travail : `stundtransfer` (basée sur la version officielle **v1.22.4**, partie de la v1.22.3)
 - Image Docker : `ghcr.io/stundzow/stundtransfer:latest`, construite par GitHub Actions à chaque envoi sur la branche `stundtransfer` (`.github/workflows/stundtransfer-image.yml`). Les tests tournent avant : si un test échoue, l'image n'est pas publiée.
 - Le partage « classique » de Pingvin (toi → quelqu'un) est caché par défaut ; il se réactive dans Paramètres → StundTransfer → Partage classique.
 
