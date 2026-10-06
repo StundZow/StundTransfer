@@ -71,7 +71,7 @@ async function startDeposit(uploaderName, videoName, files, requestedChunkSize, 
   const registered = await api("POST", `/stundtransfer/deposits/${depositId}/files`, {
     secret,
     body: {
-      files: files.map((f) => ({ path: f.path, size: f.data.length, lastModified: f.lastModified })),
+      files: files.map((f) => ({ path: f.path, size: f.data.length, lastModified: f.lastModified, name: f.name })),
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.json));
@@ -127,6 +127,8 @@ async function remainingUses() {
 }
 
 console.log("StundTransfer e2e deposit test");
+// Whatever sits next to the transfer folder must not change
+const parentBefore = (await readdir(path.dirname(TRANSFER))).sort();
 const usesBefore = await remainingUses();
 
 // --- Link checks
@@ -265,8 +267,7 @@ for (const [f, relative] of expectedA) {
 }
 ok('files are in "Litsu - Beamng/" with the right names, folders, content and dates');
 
-const outside = (await readdir(path.dirname(TRANSFER))).filter((n) => !["transfer", "en-cours"].includes(n));
-assert.deepEqual(outside, []);
+assert.deepEqual((await readdir(path.dirname(TRANSFER))).sort(), parentBefore);
 assert.deepEqual(await depositFolders(), ["Litsu - Beamng"]);
 assert.equal(await exists(path.join(STAGING, A.depositId)), false);
 ok("nothing written outside the transfer folder, staging cleaned (no duplicate kept)");
@@ -290,6 +291,22 @@ assert.equal(
 assert.deepEqual(await depositFolders(), ["Litsu - Beamng", "litsu - BEAMNG (2)"]);
 ok('2nd deposit "litsu"/"BEAMNG" gets its own folder "litsu - BEAMNG (2)", nothing overwritten');
 ok("chunk size chosen per deposit; buffered (old) and streamed (new) chunks both accepted");
+
+// --- Deposit E: files renamed by the uploader before sending
+const filesE = [
+  { ...file("Carte/A001_C003.MP4", 300_000), name: "Plan drone.MP4" },
+  { ...file("A002.MP4", 200_000), name: "Interview: Litsu?.MP4" },
+];
+const E = await startDeposit("Renommage", "Test", filesE);
+await uploadJobs(E, chunkJobs(E));
+r = await api("POST", `/stundtransfer/deposits/${E.depositId}/complete`, { secret: E.secret });
+assert.equal(r.status, 202);
+for (const [f, relative] of [[filesE[0], "Carte/Plan drone.MP4"], [filesE[1], "Interview_ Litsu_.MP4"]]) {
+  const target = path.join(TRANSFER, "Renommage - Test", ...relative.split("/"));
+  await waitForFile(target);
+  assert.equal(sha(await readFile(target)), sha(f.data));
+}
+ok("files renamed before sending arrive under their new name, folders kept, names cleaned");
 
 // --- Deposit C: the uploader cancels
 const filesC = [file("annule.mov", 3_000_000)];
@@ -341,7 +358,7 @@ ok("deposit history is not visible without signing in");
 
 const usesAfter = await remainingUses();
 if (usesBefore !== undefined) {
-  assert.equal(usesAfter, usesBefore - 2);
+  assert.equal(usesAfter, usesBefore - 3); // deposits A, B and E used the link
   ok(`link uses counted (${usesBefore} -> ${usesAfter})`);
 }
 

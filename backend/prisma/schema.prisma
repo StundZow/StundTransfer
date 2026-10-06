@@ -225,6 +225,8 @@ model StundDepositFile {
 
   // Path as sent by the browser, e.g. "Card A/CLIP/A001.MP4"
   originalPath String
+  // File name chosen by the uploader (renamed before sending), e.g. "Plan drone.MP4"
+  targetName   String?
   size         String
   lastModified DateTime?
   // UPLOADING | UPLOADED | DONE | ERROR

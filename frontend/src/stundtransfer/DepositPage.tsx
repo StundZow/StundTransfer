@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Center,
-  CloseButton,
   Group,
   Loader,
   Paper,
@@ -33,8 +32,10 @@ import useConfirmLeave from "../hooks/confirm-leave.hook";
 import useTranslate from "../hooks/useTranslate.hook";
 import toast from "../utils/toast.util";
 import DepositDropzone from "./DepositDropzone";
+import SelectedFileRow from "./SelectedFileRow";
 import {
   SelectedFile,
+  displayPath,
   fileKey,
   formatDuration,
   formatSize,
@@ -56,7 +57,7 @@ import {
 } from "./uploader";
 
 const BATCH_SIZE = 250;
-const FILE_PREVIEW_COUNT = 8;
+const FILE_PREVIEW_COUNT = 300;
 const DONE_PREVIEW_COUNT = 20;
 
 type Phase =
@@ -282,6 +283,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           path: f.path,
           size: f.size,
           lastModified: f.lastModified,
+          name: f.name,
         }));
         registered.push(
           ...(await withNetworkRetry(() => stundTransferService.addFiles(session, batch))),
@@ -290,7 +292,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       await upload(
         session,
         toUploadItems(registered),
-        selected.map((f) => f.path),
+        selected.map(displayPath), // shown on "Reçu", with the new names
         selectedSize,
       );
     } catch (e) {
@@ -371,25 +373,21 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           <FormattedMessage id="stundtransfer.files.clear" />
         </Button>
       </Group>
-      <Stack spacing={4}>
+      <Stack spacing={4} mah={360} sx={{ overflowY: "auto" }}>
         {selected.slice(0, FILE_PREVIEW_COUNT).map((f) => (
-          <Group key={f.path} position="apart" noWrap spacing="xs">
-            <Text size="sm" truncate sx={{ minWidth: 0 }}>
-              {f.path}
-            </Text>
-            <Group spacing="xs" noWrap>
-              <Text size="xs" color="dimmed">
-                {humanSize(f.size)}
-              </Text>
-              <CloseButton
-                size="sm"
-                aria-label={f.path}
-                onClick={() =>
-                  setSelected((current) => current.filter((c) => c.path !== f.path))
-                }
-              />
-            </Group>
-          </Group>
+          <SelectedFileRow
+            key={f.path}
+            file={f}
+            sizeLabel={humanSize(f.size)}
+            onRename={(name) =>
+              setSelected((current) =>
+                current.map((c) => (c.path === f.path ? { ...c, name } : c)),
+              )
+            }
+            onRemove={() =>
+              setSelected((current) => current.filter((c) => c.path !== f.path))
+            }
+          />
         ))}
         {selected.length > FILE_PREVIEW_COUNT && (
           <Text size="sm" color="dimmed">

@@ -82,7 +82,7 @@ const createDeposit = async (body: {
 
 const addFiles = async (
   session: Pick<DepositSession, "depositId" | "secret">,
-  files: { path: string; size: number; lastModified?: number }[],
+  files: { path: string; size: number; lastModified?: number; name?: string }[],
 ): Promise<DepositFileState[]> =>
   (
     await api.post(

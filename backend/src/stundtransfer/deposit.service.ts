@@ -328,6 +328,8 @@ export class DepositService implements OnModuleInit {
         { maxSize },
       );
 
+    // Recreated if someone deleted it (e.g. while tidying the NAS by hand)
+    await fs.mkdir(STUND_STAGING_DIR, { recursive: true });
     const { bavail, bsize } = await fs.statfs(STUND_STAGING_DIR);
     if (bavail * bsize - dto.totalSize < this.config.get("stundtransfer.minFreeSpace"))
       throw stundError(
@@ -424,6 +426,7 @@ export class DepositService implements OnModuleInit {
           return {
             depositId,
             originalPath: f.path,
+            targetName: f.name?.trim() || null,
             size: String(f.size),
             lastModified:
               lastModified && !isNaN(lastModified.getTime()) ? lastModified : null,
@@ -751,7 +754,9 @@ export class DepositService implements OnModuleInit {
       if (file.status === "DONE") continue;
       try {
         const segments = sanitizeRelativePath(file.originalPath);
-        const fileName = segments.pop();
+        const originalName = segments.pop();
+        // Renamed by the uploader: same folders, new name
+        const fileName = (file.targetName && sanitizeSegment(file.targetName)) || originalName;
         const destDir = resolveInside(STUND_ROOT_DIR, ...folder.split("/"), ...segments);
         const { finalPath, method } = await moveIntoFolder({
           root: STUND_ROOT_DIR,
@@ -926,7 +931,9 @@ export class DepositService implements OnModuleInit {
 
     // Leftover folders without an active deposit (e.g. manual database restore)
     let orphans = 0;
-    const entries = await fs.readdir(STUND_STAGING_DIR, { withFileTypes: true });
+    const entries = await fs
+      .readdir(STUND_STAGING_DIR, { withFileTypes: true })
+      .catch(() => [] as import("fs").Dirent[]);
     for (const entry of entries) {
       if (!entry.isDirectory() || !isValidUUID(entry.name)) continue;
       const deposit = await this.prisma.stundDeposit.findUnique({

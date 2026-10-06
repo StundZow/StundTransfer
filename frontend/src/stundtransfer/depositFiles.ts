@@ -3,10 +3,37 @@ import { getNormalizedFileName } from "../utils/file.util";
 
 export type SelectedFile = {
   file: File;
+  // Path as dropped ("Card A/A001.MP4"): identifies the file, also to resume
   path: string;
   size: number;
   lastModified: number;
+  // New name chosen with the pencil (folders stay the same)
+  name?: string;
 };
+
+const baseName = (path: string) => path.split("/").pop() ?? path;
+
+/** Name shown and used on the NAS: the new name if renamed. */
+export const displayName = (f: SelectedFile) => f.name ?? baseName(f.path);
+
+/** "Card A/A001.MP4" renamed "Plan drone.MP4" -> "Card A/Plan drone.MP4" */
+export const displayPath = (f: SelectedFile) =>
+  [...f.path.split("/").slice(0, -1), displayName(f)].join("/");
+
+/**
+ * Cleans a new name typed by the uploader. Returns undefined when it is
+ * empty or unchanged. The extension is put back if it was removed.
+ */
+export function cleanNewName(path: string, typed: string): string | undefined {
+  const original = baseName(path);
+  let name = typed.trim().replace(/[\\/]/g, "_");
+  if (!name) return undefined;
+  const dot = original.lastIndexOf(".");
+  const extension = dot > 0 ? original.slice(dot) : "";
+  if (extension && !name.toLowerCase().endsWith(extension.toLowerCase()))
+    name += extension;
+  return name === original ? undefined : name;
+}
 
 // OS clutter nobody wants on the NAS
 const JUNK_FILE = /^(\.DS_Store|Thumbs\.db|desktop\.ini|\._.*)$/i;

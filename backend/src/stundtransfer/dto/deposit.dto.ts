@@ -63,6 +63,12 @@ export class DepositFileDTO {
   @Max(Number.MAX_SAFE_INTEGER)
   size: number;
 
+  // New file name chosen by the uploader (the folders of "path" are kept)
+  @IsOptional()
+  @IsString()
+  @Length(1, 255)
+  name?: string;
+
   // File "date modified", in milliseconds
   @IsOptional()
   @IsInt()
