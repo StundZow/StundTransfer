@@ -526,7 +526,19 @@ export const configVariables = {
       type: "boolean",
       defaultValue: "false",
     },
-    // Pingvin's own sharing (upload page, "Mes partages", "Partages inversés")
+    // Examples shown in the "Qui es-tu ?" / "Pour quelle vidéo ?" fields
+    uploaderPlaceholder: {
+      type: "string",
+      defaultValue: "ex. Stund",
+      secret: false,
+    },
+    videoPlaceholder: {
+      type: "string",
+      defaultValue: "ex. Beamng",
+      secret: false,
+    },
+    // Pingvin's own sharing in the header for admins (upload page and share menu);
+    // admins can always reach it from the Administration page
     classicSharing: {
       type: "boolean",
       defaultValue: "false",

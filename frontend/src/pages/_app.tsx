@@ -27,6 +27,7 @@ import authService from "../services/auth.service";
 import configService from "../services/config.service";
 import userService from "../services/user.service";
 import GlobalStyle from "../styles/global.style";
+import ResponsiveScale from "../stundtransfer/ResponsiveScale"; // StundTransfer
 import globalStyle from "../styles/mantine.style";
 import Config from "../types/config.type";
 import { CurrentUser } from "../types/user.type";
@@ -278,6 +279,7 @@ function App({ Component, pageProps }: AppProps) {
             toggleColorScheme={toggleColorScheme}
           >
             <GlobalStyle />
+            <ResponsiveScale /> {/* StundTransfer: bigger on large screens */}
             <Notifications />
             <ModalsProvider>
               <ConfigContext.Provider

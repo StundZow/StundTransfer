@@ -13,7 +13,11 @@ export class CreateShareGuard extends JwtGuard {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (await super.canActivate(context)) return true;
+    if (await super.canActivate(context)) {
+      // StundTransfer: only administrators create share links
+      const user = context.switchToHttp().getRequest().user;
+      return !user || user.isAdmin;
+    }
 
     const reverseShareTokenId = context.switchToHttp().getRequest()
       .cookies.reverse_share_token;

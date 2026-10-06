@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { TbFolder, TbInbox, TbLink, TbRefresh, TbSettings, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder
+import { TbFolder, TbInbox, TbLink, TbPalette, TbRefresh, TbSend, TbSettings, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder, TbSend, TbPalette
 import { FormattedMessage } from "react-intl";
 import Meta from "../../components/Meta";
 import useTranslate from "../../hooks/useTranslate.hook";
@@ -52,6 +52,21 @@ const Admin = () => {
       route: "/admin/destination",
     },
     {
+      title: t("stundtransfer.admin.send-files"),
+      icon: TbSend,
+      route: "/upload",
+    },
+    {
+      title: t("stundtransfer.admin.my-links"),
+      icon: TbLink,
+      route: "/account/shares",
+    },
+    {
+      title: t("stundtransfer.admin.theme"),
+      icon: TbPalette,
+      route: "/admin/config/appearance",
+    },
+    {
       title: t("admin.button.users"),
       icon: TbUsers,
       route: "/admin/users",
@@ -76,9 +91,12 @@ const Admin = () => {
           setManagementOptions([
             ...managementOptions,
             {
-              title: "Update",
+              // StundTransfer: an official release must be merged into the fork
+              // (installing the official image would remove StundTransfer)
+              title: t("stundtransfer.admin.official-update"),
               icon: TbRefresh,
-              route: "https://github.com/smp46/pingvin-share-x/releases/latest",
+              route:
+                "https://github.com/StundZow/pingvin-share-x/blob/stundtransfer/STUNDTRANSFER.md#r%C3%A9cup%C3%A9rer-une-mise-%C3%A0-jour-du-projet-officiel-upstream",
             },
           ]);
         }

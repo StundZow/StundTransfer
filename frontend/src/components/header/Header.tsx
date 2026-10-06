@@ -30,7 +30,7 @@ import {
   isClassicSharingEnabled,
 } from "../../stundtransfer/classicSharing";
 
-const HEADER_HEIGHT = 60;
+const HEADER_HEIGHT = "3.75rem"; // StundTransfer: was 60 (px), now follows the screen size
 
 type NavLink = {
   link?: string;
@@ -216,8 +216,9 @@ const Header = () => {
       ]
     : unauthenticatedLinks;
 
-  // StundTransfer: classic sharing hidden -> only the deposits and the profile menu
-  if (!isClassicSharingEnabled(config.get)) {
+  // StundTransfer: only admins create share links; in the header only if
+  // "Partage classique" is on (otherwise from the Administration page)
+  if (!isClassicSharingEnabled(config.get) || !user?.isAdmin) {
     const depositsLink = { link: DEPOSITS_PAGE, label: t("stundtransfer.admin.title") };
     authenticatedLinks = [depositsLink, { component: <ActionAvatar /> }];
     if (user) mobileRootLinks = [depositsLink, { label: t("common.button.profile") }];

@@ -1,8 +1,8 @@
 // StundTransfer: Pingvin's classic sharing (upload page, "Mes partages",
-// "Partages inversés") is hidden unless enabled in
-// Administration > Paramètres > StundTransfer.
+// "Partages inversés") is for admins only: from the Administration page, and in
+// the header when "Partage classique" is on (Paramètres > StundTransfer).
 
-/** Pages of the classic sharing, redirected to the deposits when it is hidden. */
+/** Pages of the classic sharing, redirected for non-admins. */
 export const CLASSIC_SHARING_ROUTES = [
   "/upload",
   "/account/shares",

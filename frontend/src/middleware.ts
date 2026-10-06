@@ -81,12 +81,9 @@ export async function middleware(request: NextRequest) {
   if (route == "/" && (!user || !isClassicSharingEnabled(getConfig)))
     return NextResponse.rewrite(new URL("/depot", request.url));
 
-  // StundTransfer: classic sharing hidden -> its pages lead to the deposits
-  // (received deposits when signed in, the deposit page for visitors)
-  if (
-    !isClassicSharingEnabled(getConfig) &&
-    new Routes(CLASSIC_SHARING_ROUTES).contains(route)
-  ) {
+  // StundTransfer: sharing pages are for admins only (only they create links);
+  // others go to the received deposits, visitors to the deposit page
+  if (!user?.isAdmin && new Routes(CLASSIC_SHARING_ROUTES).contains(route)) {
     const response = NextResponse.redirect(
       new URL(user ? DEPOSITS_PAGE : "/", request.url),
     );

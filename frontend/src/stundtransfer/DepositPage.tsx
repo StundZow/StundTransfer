@@ -28,6 +28,7 @@ import {
 } from "react-icons/tb";
 import { FormattedMessage, useIntl } from "react-intl";
 import Meta from "../components/Meta";
+import useConfig from "../hooks/config.hook";
 import useConfirmLeave from "../hooks/confirm-leave.hook";
 import useTranslate from "../hooks/useTranslate.hook";
 import toast from "../utils/toast.util";
@@ -92,6 +93,15 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
   const t = useTranslate();
   const intl = useIntl();
   const humanSize = (bytes: number) => formatSize(bytes, intl.locale);
+  const config = useConfig();
+  // Examples of the two fields (Paramètres > StundTransfer), translated text otherwise
+  const placeholder = (key: string, fallback: string) => {
+    try {
+      return config.get(key) || t(fallback);
+    } catch {
+      return t(fallback);
+    }
+  };
   const [phase, setPhase] = useState<Phase>({ name: "checking" });
   const [uploaderName, setUploaderName] = useState("");
   const [videoName, setVideoName] = useState("");
@@ -431,7 +441,10 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
                 size="md"
                 maxLength={60}
                 label={t("stundtransfer.form.uploader.label")}
-                placeholder={t("stundtransfer.form.uploader.placeholder")}
+                placeholder={placeholder(
+                  "stundtransfer.uploaderPlaceholder",
+                  "stundtransfer.form.uploader.placeholder",
+                )}
                 value={uploaderName}
                 onChange={(e) => setUploaderName(e.currentTarget.value)}
               />
@@ -440,7 +453,10 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
                 size="md"
                 maxLength={60}
                 label={t("stundtransfer.form.video.label")}
-                placeholder={t("stundtransfer.form.video.placeholder")}
+                placeholder={placeholder(
+                  "stundtransfer.videoPlaceholder",
+                  "stundtransfer.form.video.placeholder",
+                )}
                 value={videoName}
                 onChange={(e) => setVideoName(e.currentTarget.value)}
               />
@@ -665,7 +681,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
   return (
     <>
       <Meta title={t("stundtransfer.page.title")} />
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>{content}</div>
+      <div style={{ maxWidth: "50rem", margin: "0 auto" }}>{content}</div>
     </>
   );
 };

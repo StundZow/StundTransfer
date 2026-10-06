@@ -29,7 +29,7 @@ const Depot = () => {
       <Alert
         icon={<TbInfoCircle />}
         title={t("stundtransfer.guest.closed.title")}
-        style={{ maxWidth: 720, margin: "0 auto" }}
+        style={{ maxWidth: "50rem", margin: "0 auto" }}
       >
         <FormattedMessage id="stundtransfer.guest.closed.description" />
       </Alert>

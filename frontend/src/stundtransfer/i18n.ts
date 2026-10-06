@@ -26,6 +26,16 @@ const english: Record<string, string> = {
   "admin.config.stundtransfer.abandon-after.description":
     "An upload with no activity for this long is deleted from the \"in progress\" folder. Received files are never touched.",
   "stundtransfer.admin.card": "Received drops",
+  "stundtransfer.admin.send-files": "Send files",
+  "stundtransfer.admin.official-update": "New Pingvin version: ask Claude to merge it",
+  "stundtransfer.admin.my-links": "My share links",
+  "stundtransfer.admin.theme": "Colors and theme",
+  "admin.config.stundtransfer.uploader-placeholder": 'Example for "Who are you?"',
+  "admin.config.stundtransfer.uploader-placeholder.description":
+    "Grey text shown in the empty field. Leave empty for the default text.",
+  "admin.config.stundtransfer.video-placeholder": 'Example for "Which video is it for?"',
+  "admin.config.stundtransfer.video-placeholder.description":
+    "Grey text shown in the empty field. Leave empty for the default text.",
   "stundtransfer.destination.title": "Destination folder",
   "stundtransfer.destination.current": "Drops arrive in:",
   "stundtransfer.destination.change": "Change",
@@ -42,13 +52,13 @@ const english: Record<string, string> = {
     "Off: each drop gets its own folder (\"Litsu - Beamng\", then \"Litsu - Beamng (2)\"...). On: drops with the same name and video go into the same folder.",
   "admin.config.stundtransfer.classic-sharing": "Classic sharing",
   "admin.config.stundtransfer.classic-sharing.description":
-    "Shows Pingvin's own sharing for signed-in users: upload page to send files to someone with a download link, \"My shares\" and \"Reverse shares\". Off: signed-in users only see the received drops and the administration.",
+    "Shows the upload page and the share menu in the header for administrators. Off: administrators send files and manage their links from the Administration page. Only administrators can create share links.",
 
   "stundtransfer.form.title": "Send your files",
   "stundtransfer.form.subtitle":
     "Tell us who you are and which video it is for, then add your files or folders.",
   "stundtransfer.form.uploader.label": "Who are you?",
-  "stundtransfer.form.uploader.placeholder": "e.g. Litsu",
+  "stundtransfer.form.uploader.placeholder": "e.g. Stund",
   "stundtransfer.form.video.label": "Which video is it for?",
   "stundtransfer.form.video.placeholder": "e.g. Beamng",
   "stundtransfer.form.missing-fields": "Fill in both fields to send",
@@ -181,6 +191,16 @@ const french: Record<string, string> = {
   "admin.config.stundtransfer.abandon-after.description":
     "Un envoi sans activité depuis ce délai est supprimé du dossier « en cours ». Les fichiers reçus ne sont jamais touchés.",
   "stundtransfer.admin.card": "Dépôts reçus",
+  "stundtransfer.admin.send-files": "Envoyer des fichiers",
+  "stundtransfer.admin.official-update": "Nouvelle version Pingvin : demande à Claude de l'intégrer",
+  "stundtransfer.admin.my-links": "Mes liens de partage",
+  "stundtransfer.admin.theme": "Couleurs et thème",
+  "admin.config.stundtransfer.uploader-placeholder": "Exemple pour « Qui es-tu ? »",
+  "admin.config.stundtransfer.uploader-placeholder.description":
+    "Texte gris affiché dans le champ vide. Laisse vide pour le texte par défaut.",
+  "admin.config.stundtransfer.video-placeholder": "Exemple pour « Pour quelle vidéo ? »",
+  "admin.config.stundtransfer.video-placeholder.description":
+    "Texte gris affiché dans le champ vide. Laisse vide pour le texte par défaut.",
   "stundtransfer.destination.title": "Dossier de réception",
   "stundtransfer.destination.current": "Les dépôts arrivent dans :",
   "stundtransfer.destination.change": "Changer",
@@ -197,13 +217,13 @@ const french: Record<string, string> = {
     "Désactivé : chaque dépôt a son propre dossier (« Litsu - Beamng », puis « Litsu - Beamng (2) »…). Activé : les dépôts avec le même nom et la même vidéo vont dans le même dossier.",
   "admin.config.stundtransfer.classic-sharing": "Partage classique",
   "admin.config.stundtransfer.classic-sharing.description":
-    "Affiche le partage d'origine de Pingvin pour les comptes connectés : page « Téléverser » pour envoyer des fichiers à quelqu'un avec un lien de téléchargement, « Mes partages » et « Partages inversés ». Désactivé : une fois connecté, on ne voit que les dépôts reçus et l'administration.",
+    "Affiche « Téléverser » et le menu des partages dans la barre du haut pour les administrateurs. Désactivé : les administrateurs envoient des fichiers et gèrent leurs liens depuis la page Administration. Seuls les administrateurs peuvent créer des liens de partage.",
 
   "stundtransfer.form.title": "Envoie tes fichiers",
   "stundtransfer.form.subtitle":
     "Indique qui tu es et pour quelle vidéo, puis ajoute tes fichiers ou dossiers.",
   "stundtransfer.form.uploader.label": "Qui es-tu ?",
-  "stundtransfer.form.uploader.placeholder": "ex. Litsu",
+  "stundtransfer.form.uploader.placeholder": "ex. Stund",
   "stundtransfer.form.video.label": "Pour quelle vidéo ?",
   "stundtransfer.form.video.placeholder": "ex. Beamng",
   "stundtransfer.form.missing-fields": "Remplis les deux champs pour envoyer",
