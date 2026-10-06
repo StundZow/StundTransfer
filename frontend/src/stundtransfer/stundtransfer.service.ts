@@ -105,7 +105,8 @@ const uploadChunk = async (
   session: Pick<DepositSession, "depositId" | "secret">,
   fileId: string,
   index: number,
-  data: ArrayBuffer,
+  // A slice of the file (Blob): the browser streams it from disk
+  data: Blob,
   options: {
     signal: AbortSignal;
     onUploadProgress: (event: AxiosProgressEvent) => void;

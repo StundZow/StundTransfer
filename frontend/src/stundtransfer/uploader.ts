@@ -149,6 +149,9 @@ export class DepositUploader {
           this.stopped = true;
           throw fatal;
         }
+        // A file that became unreadable (unplugged drive or card) cannot get
+        // better by retrying: test 1 byte instead of retrying forever.
+        await this.assertReadable(item, index);
         if ((e as Error)?.name === "StallError") {
           this.consecutiveStalls++;
           if (this.consecutiveStalls >= 2 && this.concurrency > 1) {
@@ -165,18 +168,25 @@ export class DepositUploader {
     }
   }
 
+  private async assertReadable(item: UploadItem, index: number) {
+    const start = index * this.session.chunkSize;
+    if (chunkLength(item.size, this.session.chunkSize, index) === 0) return;
+    try {
+      await item.file.slice(start, start + 1).arrayBuffer();
+    } catch {
+      this.stopped = true;
+      throw new FatalUploadError("file-read", { name: item.path });
+    }
+  }
+
   private async uploadOnce(item: UploadItem, index: number) {
     const start = index * this.session.chunkSize;
     const length = chunkLength(item.size, this.session.chunkSize, index);
 
-    // Read the chunk first: a file that became unreadable (unplugged drive)
-    // is reported instead of being retried forever.
-    let data: ArrayBuffer;
-    try {
-      data = await item.file.slice(start, start + length).arrayBuffer();
-    } catch {
-      throw new FatalUploadError("file-read", { name: item.path });
-    }
+    // A slice of the file on disk, not a copy in memory: the browser reads it
+    // while sending (reading 6 x 20 MB into memory crashed some browsers
+    // with "Out of Memory").
+    const data = item.file.slice(start, start + length);
 
     const key = `${item.id}:${index}`;
     const controller = new AbortController();
