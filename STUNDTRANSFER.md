@@ -2,7 +2,7 @@
 
 Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé en outil de **dépôt de rushs** : la personne dit qui elle est et pour quelle vidéo, dépose ses fichiers ou dossiers, et ils arrivent directement dans `<dossier de réception>/<Nom> - <Vidéo>/` sur le NAS. Aucun compte, aucun lien de partage, aucune page de téléchargement.
 
-- Branche de travail : `stundtransfer` (basée sur la version officielle **v1.22.4**, partie de la v1.22.3)
+- Branche de travail : `stundtransfer` (basée sur la version officielle **v2.0.0**)
 - Image Docker : `ghcr.io/stundzow/stundtransfer:latest`, construite par GitHub Actions à chaque envoi sur la branche `stundtransfer` (`.github/workflows/stundtransfer-image.yml`). Les tests tournent avant : si un test échoue, l'image n'est pas publiée.
 - Le partage « classique » de Pingvin (toi → quelqu'un) est caché par défaut ; il se réactive dans Paramètres → StundTransfer → Partage classique.
 
@@ -101,7 +101,7 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/...`), `PUID`/`PGID` et `STUNDTRANSFER_ROOT_NAME` à ton NAS. `STUNDTRANSFER_STAGING_DIR` peut être retiré (par défaut : `.stundtransfer-en-cours` à la racine du dossier monté).
 4. Ouvre `http://<ip-du-nas>:3000/auth/signUp` : **le premier compte créé est administrateur**.
 5. Administration → Paramètres :
-   - **Partage** → désactive « Autoriser les inscriptions » (sinon n'importe qui peut se créer un compte) ;
+   - **Sécurité & Accès** → désactive « Autoriser les inscriptions » (sinon n'importe qui peut se créer un compte) ;
    - **Général** → nom de l'appli, logo, adresse publique ;
    - **StundTransfer** → active « Dépôt public ».
 6. Pour l'accès depuis internet : adresse DDNS + certificat Let's Encrypt + proxy inversé DSM (HTTPS 443 → `localhost:3000`) + redirection du port 443 sur la box. Jamais le port 3000 directement.
@@ -123,7 +123,7 @@ Le plus simple : demande à Claude Code « mets à jour StundTransfer avec la de
 ```bash
 git fetch upstream --tags
 git checkout stundtransfer
-git merge v1.22.4            # remplace par le tag de la nouvelle version
+git merge vX.Y.Z             # le tag de la nouvelle version
 cd backend && npm ci && npm run test:stundtransfer && cd ..
 git push origin stundtransfer # déclenche les tests et la construction de l'image
 ```
@@ -131,6 +131,7 @@ git push origin stundtransfer # déclenche les tests et la construction de l'ima
 Règles :
 - Fusionner uniquement des **tags de version stable** (`vX.Y.Z`), pas `main` (versions bêta).
 - Avant de passer à une nouvelle version **majeure** (ex. 2.0), sauvegarder `data/pingvin-share.db` : les migrations ne se défont pas.
+- Version majeure : relancer `node test/stundtransfer/e2e-deposit.mjs` sur une **copie** de la base du NAS migrée (avec `STUNDTRANSFER_CHUNK_MB=1`), et vérifier les réglages déplacés (en 2.0 : inscriptions, cookies, durée de session… passés dans « Sécurité & Accès »). L'outil `stundtransfer-import-config-yaml.cjs` connaît ces déplacements (table `MOVED`).
 - Les migrations Prisma de StundTransfer sont **additives uniquement** (ajout de tables/colonnes, jamais de suppression). Si une migration officielle a une date antérieure à la nôtre, `prisma migrate deploy` l'applique quand même : pas d'action à faire.
 
 ### Ce qui est modifié dans le code officiel

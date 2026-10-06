@@ -1,4 +1,5 @@
-#This configuration is pre-filled with the default values.
+#This configuration is pre-filled with the default values FOR THE LATEST (beta included) RELEASE.
+#If you aren't running the latest beta release, you should find the correct config for your version via the project's docs.
 #You can remove keys you don't want to set. If a key is missing, the value set in the UI will be used; if that is also unset, the default value applies.
 
 general:
@@ -6,14 +7,37 @@ general:
   appName: Pingvin Share X
   #On which URL Pingvin Share is available
   appUrl: http://localhost:3000
-  #Whether to set the secure flag on cookies. If enabled, the site will not function when accessed over HTTP.
-  secureCookies: "false"
   #Whether to show the home page
   showHomePage: "true"
-  #Time after which a user must log in again (default: 3 months).
-  sessionDuration: 3 months
+  #Whether to show sign-in and sign-up buttons on share and upload pages.
+  showAuthButtons: "true"
   #This applies to all users, each user can still personalise their language in their profile.
   defaultLanguage: en-US
+security:
+  #Time after which a user must log in again (default: 3 months).
+  sessionDuration: 3 months
+  #Whether to set the secure flag on cookies. If enabled, the site will not function when accessed over HTTP.
+  secureCookies: "false"
+  #Whether to require users to verify their email address before being able to sign in. This can only be enabled if SMTP is activated.
+  enableEmailVerification: "false"
+  #Whether registration is allowed
+  allowRegistration: "true"
+  #Whether unauthenticated users can create shares
+  allowUnauthenticatedShares: "false"
+  #Allow administrators to access all shares, even if they are password protected, expired or deleted.
+  allowAdminAccessAllShares: "false"
+  #Whether to enable customisation of the password policy. If disabled, the default password policy of an 8 character minimum is used.
+  customPasswordPolicy: "false"
+  #Minimum number of characters required for a password.
+  minLength: "8"
+  #Whether to require at least one uppercase letter in the password.
+  requireUppercase: "false"
+  #Whether to require at least one lowercase letter in the password.
+  requireLowercase: "false"
+  #Whether to require at least one number in the password.
+  requireNumber: "false"
+  #Whether to require at least one special character in the password.
+  requireSpecialCharacter: "false"
 appearance:
   #Primary color used for buttons, links, and accents. Choose custom to use a color picker override.
   themePrimaryColor: victoria
@@ -28,10 +52,16 @@ appearance:
   #Choose how upload progress is displayed in the file list.
   uploadProgressStyle: circle
 share:
-  #Whether registration is allowed
-  allowRegistration: "true"
-  #Whether unauthenticated users can create shares
-  allowUnauthenticatedShares: "false"
+  #Whether to allow email sharing with recipients. This can only be enabled if SMTP is activated.
+  enableShareEmailRecipients: "false"
+  #Whether to send an email to the share creator when an email recipient downloads a file. This requires SMTP and email recipient sharing.
+  enableShareDownloadNotifications: "false"
+  #When enabled, shares sent to a registered user's email address will automatically appear in their account. Users can also restrict share access to named recipients only.
+  enableUserRecipients: "false"
+  #The share creation modal automatically appears when a user selects files, eliminating the need to manually click the button.
+  autoOpenShareModal: "false"
+  #Force reverse shares to be created in simple mode. If disabled, the creator of the reverse share can choose between simple and advanced mode.
+  reverseShareSimpleOnly: "false"
   #Maximum share expiration. Set to 0 to allow unlimited expiration.
   maxExpiration: 0 days
   #The default expiration time selected when creating a new share.
@@ -44,14 +74,6 @@ share:
   zipCompressionLevel: "9"
   #Adjust the chunk size for your uploads to balance efficiency and reliability according to your internet connection. Smaller chunks can enhance success rates for unstable connections, while larger chunks make uploads faster for stable connections.
   chunkSize: "10000000"
-  #The share creation modal automatically appears when a user selects files, eliminating the need to manually click the button.
-  autoOpenShareModal: "false"
-  #Force reverse shares to be created in simple mode. If disabled, the creator of the reverse share can choose between simple and advanced mode.
-  reverseShareSimpleOnly: "false"
-  #Allow administrators to access all shares, even if they are password protected, expired or deleted.
-  allowAdminAccessAllShares: "false"
-  #When enabled, shares sent to a registered user's email address will automatically appear in their account. Users can also restrict share access to named recipients only.
-  enableUserRecipients: "false"
   #How long files are kept after a share expires or gets deleted. Only useful if the 'Allow admin access to all shares' is also enabled. Set to -1 to keep files forever.
   fileRetentionPeriod: 0 days
 cache:
@@ -66,8 +88,8 @@ cache:
 email:
   #If enabled, emails will be sent in HTML format. Ensure email templates are updated to use HTML.
   sendHtmlEmails: "false"
-  #Whether to allow email sharing with recipients. This can only be enabled if SMTP is activated.
-  enableShareEmailRecipients: "false"
+  #Whether to set the Reply-To header to the email address of the user who created the share.
+  shareRecipientsReplyToCreator: "false"
   #Subject of the email which gets sent to the share recipients.
   shareRecipientsSubject: Files shared with you
   #Message which gets sent to the share recipients. Available variables:
@@ -94,18 +116,18 @@ email:
     Shared securely with Pingvin Share 🐧
   #Subject of the sent email when someone created a share with your reverse share link.
   reverseShareSubject: Reverse share link used
-  #Message which gets sent when someone created a share with your reverse share link. {shareUrl} will be replaced with the creator's name and the share URL.
+  #Message which gets sent when someone created a share with your reverse share link. {name} will be replaced with the creator's name and {shareUrl} with the share URL.
   reverseShareMessage: |-
-    Hey!
+    Hey {name}!
 
     A share was just created with your reverse share link: {shareUrl}
 
     Shared securely with Pingvin Share 🐧
   #Subject of the sent email when a user requests a password reset.
   resetPasswordSubject: Pingvin Share password reset
-  #Message which gets sent when a user requests a password reset. {url} will be replaced with the reset password URL.
+  #Message which gets sent when a user requests a password reset. {name} will be replaced with the user's name and {url} with the reset password URL.
   resetPasswordMessage: >-
-    Hey!
+    Hey {name}!
 
 
     You requested a password reset. Click this link to reset your password:
@@ -117,9 +139,9 @@ email:
     Pingvin Share 🐧
   #Subject of the sent email when an admin invites a user.
   inviteSubject: Pingvin Share invite
-  #Message which gets sent when an admin invites a user. {url} will be replaced with the invite URL, {email} with the email and {password} with the users password.
+  #Message which gets sent when an admin invites a user. {name} will be replaced with the user's name, {url} with the invite URL, {email} with the email and {password} with the users password.
   inviteMessage: >-
-    Hey!
+    Hey {name}!
 
 
     You were invited to Pingvin Share. Click this link to accept the invite:
@@ -130,10 +152,6 @@ email:
 
 
     Pingvin Share 🐧
-  #Whether to send an email to the share creator when an email recipient downloads a file. This requires SMTP and email recipient sharing.
-  enableShareDownloadNotifications: "false"
-  #Whether to set the Reply-To header to the email address of the user who created the share.
-  shareRecipientsReplyToCreator: "false"
   #Subject of the email which gets sent to the share creator when a recipient downloads a file.
   shareDownloadNotificationSubject: Your file was downloaded
   #Message which gets sent to the share creator when a recipient downloads a file. Available variables:
@@ -141,18 +159,16 @@ email:
   # {fileName} - The downloaded file name
   # {shareUrl} - The URL of the share
   shareDownloadNotificationMessage: |-
-    Hey!
+    Hey {creator}!
 
-    {recipientEmail} downloaded {fileName} from your share: {shareUrl}
+    {recipient} downloaded {fileName} from your share: {shareUrl}
 
     Pingvin Share 🐧
-  #Whether to require users to verify their email address before being able to sign in. This can only be enabled if SMTP is activated.
-  enableEmailVerification: "false"
   #Subject of the email which gets sent to the user when they sign up.
   verificationSubject: Verify your Pingvin Share account
-  #Message which gets sent to the user when they sign up. {url} will be replaced with the verification URL.
+  #Message which gets sent to the user when they sign up. {name} will be replaced with the user's name and {url} with the verification URL.
   verificationMessage: >-
-    Hey!
+    Hey {name}!
 
 
     You just signed up for Pingvin Share. Click this link to verify your

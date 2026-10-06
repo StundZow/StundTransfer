@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { JwtService, JwtSignOptions } from "@nestjs/jwt";
@@ -11,6 +12,7 @@ import * as argon from "argon2";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as moment from "moment";
+import { pipeline } from "stream/promises";
 import { I18nService } from "nestjs-i18n";
 import { ClamScanService } from "src/clamscan/clamscan.service";
 import { ConfigService } from "src/config/config.service";
@@ -20,12 +22,16 @@ import { PrismaService } from "src/prisma/prisma.service";
 import { ReverseShareService } from "src/reverseShare/reverseShare.service";
 import { SystemService } from "src/system/system.service";
 import { parseRelativeDateToAbsolute } from "src/utils/date.util";
+import { byteToHumanSizeString } from "src/utils/fileSize.util";
+import { getUserActiveStorageUsage } from "src/utils/storageQuota.util";
 import { SHARE_DIRECTORY } from "../constants";
 import { CreateShareDTO } from "./dto/createShare.dto";
 import { UpdateShareDTO } from "./dto/updateShare.dto";
 
 @Injectable()
 export class ShareService {
+  private readonly logger = new Logger(ShareService.name);
+  private readonly activeZipBuilds = new Set<string>();
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
@@ -40,10 +46,63 @@ export class ShareService {
   ) {}
 
   async create(share: CreateShareDTO, user?: User, reverseShareToken?: string) {
+    const reverseShare =
+      await this.reverseShareService.getByToken(reverseShareToken);
+    const quotaOwner = reverseShare ? reverseShare.creator : user;
+
+    if (!reverseShare && user) {
+      if (user.allowShare === false) {
+        throw new ForbiddenException(this.i18n.t("share.notAllowedToShare"));
+      }
+
+      if (user.maxShares != null && user.maxShares > 0) {
+        const activeSharesCount = await this.prisma.share.count({
+          where: {
+            creatorId: user.id,
+            uploadLocked: true,
+            OR: [
+              { expiration: { gt: new Date() } },
+              { expiration: { equals: moment(0).toDate() } },
+            ],
+          },
+        });
+        if (activeSharesCount >= user.maxShares) {
+          throw new BadRequestException(
+            this.i18n.t("share.maxSharesExceeded", {
+              args: { max: user.maxShares },
+            }),
+          );
+        }
+      }
+    }
+
     if (share.size) {
       const systemInfo = await this.systemService.getSystemInfo();
       if (systemInfo && systemInfo.total - systemInfo.used < share.size) {
         throw new BadRequestException(this.i18n.t("share.notEnoughSpace"));
+      }
+
+      if (quotaOwner?.storageQuotaLimit) {
+        const quotaLimit = parseInt(quotaOwner.storageQuotaLimit);
+        const activeStorageUsage = await getUserActiveStorageUsage(
+          this.prisma,
+          quotaOwner.id,
+        );
+
+        const projectedUsage = activeStorageUsage + share.size;
+        if (projectedUsage > quotaLimit) {
+          const exceededBytes = projectedUsage - quotaLimit;
+          const exceededSize = byteToHumanSizeString(exceededBytes);
+          throw new BadRequestException(
+            reverseShare
+              ? this.i18n.t("share.reverseShareQuotaExceeded", {
+                  args: { exceededSize },
+                })
+              : this.i18n.t("share.storageQuotaExceeded", {
+                  args: { exceededSize },
+                }),
+          );
+        }
       }
     }
 
@@ -82,8 +141,6 @@ export class ShareService {
     let expirationDate: Date;
 
     // If share is created by a reverse share token override the expiration date
-    const reverseShare =
-      await this.reverseShareService.getByToken(reverseShareToken);
     if (reverseShare) {
       expirationDate = reverseShare.shareExpiration;
     } else {
@@ -136,24 +193,66 @@ export class ShareService {
   }
 
   async createZip(shareId: string) {
-    if (this.config.get("s3.enabled")) return;
+    if (this.activeZipBuilds.has(shareId)) return;
+    this.activeZipBuilds.add(shareId);
 
-    const path = `${SHARE_DIRECTORY}/${shareId}`;
-
-    const files = await this.prisma.file.findMany({ where: { shareId } });
-    const archive = archiver("zip", {
-      zlib: { level: this.config.get("share.zipCompressionLevel") },
+    const share = await this.prisma.share.findUnique({
+      where: { id: shareId },
+      select: { id: true },
     });
-    const writeStream = fs.createWriteStream(`${path}/archive.zip`);
 
-    for (const file of files) {
-      archive.append(fs.createReadStream(`${path}/${file.id}`), {
-        name: file.name,
-      });
+    if (!share) {
+      this.activeZipBuilds.delete(shareId);
+      return;
     }
 
-    archive.pipe(writeStream);
-    await archive.finalize();
+    const sharePath = `${SHARE_DIRECTORY}/${share.id}`;
+    const zipPath = `${sharePath}/archive.zip`;
+
+    if (this.config.get("s3.enabled")) {
+      await this.prisma.share
+        .update({
+          where: { id: shareId },
+          data: { isZipReady: true },
+        })
+        .catch((error) => {
+          this.logger.error(
+            `Failed to update isZipReady for S3 share ${shareId}`,
+            error,
+          );
+        });
+      this.activeZipBuilds.delete(shareId);
+      return;
+    }
+
+    try {
+      const files = await this.prisma.file.findMany({ where: { shareId } });
+      const archive = archiver("zip", {
+        zlib: { level: this.config.get("share.zipCompressionLevel") },
+      });
+
+      archive.on("warning", (err) => archive.destroy(err));
+
+      const writeStream = fs.createWriteStream(zipPath);
+
+      for (const file of files) {
+        archive.file(`${sharePath}/${file.id}`, {
+          name: file.name,
+        });
+      }
+
+      await Promise.all([pipeline(archive, writeStream), archive.finalize()]);
+
+      await this.prisma.share.update({
+        where: { id: shareId },
+        data: { isZipReady: true },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create zip for share ${shareId}`, error);
+      await fs.promises.rm(zipPath, { force: true }).catch(() => {});
+    } finally {
+      this.activeZipBuilds.delete(shareId);
+    }
   }
 
   async complete(id: string, reverseShareToken?: string) {
@@ -175,14 +274,54 @@ export class ShareService {
         this.i18n.t("share.completionRequiresFile"),
       );
 
-    // Asynchronously create a zip of all files
-    if (share.files.length > 1)
-      this.createZip(id).then(() =>
-        this.prisma.share.update({ where: { id }, data: { isZipReady: true } }),
-      );
+    if (!share.reverseShare && share.creator) {
+      if (share.creator.allowShare === false) {
+        throw new ForbiddenException(this.i18n.t("share.notAllowedToShare"));
+      }
+
+      if (share.creator.maxShares != null && share.creator.maxShares > 0) {
+        const activeSharesCount = await this.prisma.share.count({
+          where: {
+            creatorId: share.creator.id,
+            uploadLocked: true,
+            OR: [
+              { expiration: { gt: new Date() } },
+              { expiration: { equals: moment(0).toDate() } },
+            ],
+          },
+        });
+        if (activeSharesCount >= share.creator.maxShares) {
+          throw new BadRequestException(
+            this.i18n.t("share.maxSharesExceeded", {
+              args: { max: share.creator.maxShares },
+            }),
+          );
+        }
+      }
+    }
+
+    // Create a zip of all files
+    if (share.files.length > 1) void this.createZip(id);
+
+    const recipientEmails = share.recipients.map((r) => r.email);
+    const matchedUsers =
+      recipientEmails.length > 0
+        ? await this.prisma.user.findMany({
+            where: { email: { in: recipientEmails } },
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+              username: true,
+            },
+          })
+        : [];
+    const userByEmail = new Map(matchedUsers.map((u) => [u.email, u]));
 
     // Send email for each recipient
     for (const recipient of share.recipients) {
+      const userDetails = userByEmail.get(recipient.email);
+
       await this.emailService.sendMailToShareRecipients(
         recipient.email,
         recipient.id,
@@ -190,26 +329,20 @@ export class ShareService {
         share.creator || share.reverseShare?.creator,
         share.description,
         share.expiration,
+        userDetails?.displayName || userDetails?.username,
       );
     }
 
     // Auto-link email recipients who are registered users so the share appears in their dashboard
     if (this.configService.get("share.enableUserRecipients")) {
-      const emails = share.recipients.map((r) => r.email);
-      if (emails.length > 0) {
-        const matchedUsers = await this.prisma.user.findMany({
-          where: { email: { in: emails } },
-          select: { id: true },
+      for (const matchedUser of matchedUsers) {
+        await this.prisma.shareUserRecipient.upsert({
+          where: {
+            userId_shareId: { userId: matchedUser.id, shareId: share.id },
+          },
+          create: { userId: matchedUser.id, shareId: share.id },
+          update: {},
         });
-        for (const matchedUser of matchedUsers) {
-          await this.prisma.shareUserRecipient.upsert({
-            where: {
-              userId_shareId: { userId: matchedUser.id, shareId: share.id },
-            },
-            create: { userId: matchedUser.id, shareId: share.id },
-            update: {},
-          });
-        }
       }
     }
 
@@ -222,6 +355,8 @@ export class ShareService {
       await this.emailService.sendMailToReverseShareCreator(
         share.reverseShare.creator.email,
         share.id,
+        share.reverseShare.creator.displayName ||
+          share.reverseShare.creator.username,
       );
     }
 
@@ -312,10 +447,23 @@ export class ShareService {
   async getMetaData(id: string) {
     const share = await this.prisma.share.findUnique({
       where: { id },
+      include: {
+        _count: {
+          select: { files: true },
+        },
+      },
     });
 
     if (!share || !share.uploadLocked)
       throw new NotFoundException(this.i18n.t("share.notFound"));
+
+    if (
+      !share.isZipReady &&
+      share._count.files > 1 &&
+      !this.activeZipBuilds.has(id)
+    ) {
+      void this.createZip(id);
+    }
 
     return share;
   }

@@ -150,6 +150,13 @@ const Header = () => {
   const config = useConfig();
   const t = useTranslate();
 
+  const isShareOrUploadPage = [
+    "/upload/[reverseShareToken]",
+    "/share/[shareId]",
+  ].includes(router.pathname);
+  const showAuthButtons = config.get("general.showAuthButtons");
+  const shouldHideAuthButtons = !showAuthButtons && isShareOrUploadPage;
+
   const [opened, { toggle, close }] = useDisclosure(false);
   const [currentRoute, setCurrentRoute] = useState("");
   const [mobileMenuView, setMobileMenuView] = useState<MobileMenuView>("root");
@@ -161,10 +168,14 @@ const Header = () => {
   }, [close, router.pathname]);
 
   let authenticatedLinks: NavLink[] = [ // StundTransfer: let (see below)
-    {
-      link: "/upload",
-      label: t("navbar.upload"),
-    },
+    ...(user?.allowShare !== false
+      ? [
+          {
+            link: "/upload",
+            label: t("navbar.upload"),
+          },
+        ]
+      : []),
     {
       component: <NavbarShareMenu />,
     },
@@ -173,14 +184,16 @@ const Header = () => {
     },
   ];
 
-  let unauthenticatedLinks: NavLink[] = [
-    {
+  let unauthenticatedLinks: NavLink[] = [];
+
+  if (!shouldHideAuthButtons) {
+    unauthenticatedLinks.push({
       link: "/auth/signIn",
       label: t("navbar.signin"),
-    },
-  ];
+    });
+  }
 
-  if (config.get("share.allowUnauthenticatedShares")) {
+  if (config.get("security.allowUnauthenticatedShares")) {
     unauthenticatedLinks.unshift({
       link: "/upload",
       label: t("navbar.upload"),
@@ -193,20 +206,28 @@ const Header = () => {
       label: t("navbar.home"),
     });
 
-  if (config.get("share.allowRegistration"))
+  if (
+    config.get("security.allowRegistration") &&
+    (!shouldHideAuthButtons)
+  ) {
     unauthenticatedLinks.push({
       link: "/auth/signUp",
       label: t("navbar.signup"),
     });
+  }
 
   unauthenticatedLinks = []; // StundTransfer: replaced by GuestSignInButton
 
   let mobileRootLinks: NavLink[] = user // StundTransfer: let (see below)
     ? [
-        {
-          link: "/upload",
-          label: t("navbar.upload"),
-        },
+        ...(user.allowShare !== false
+          ? [
+              {
+                link: "/upload",
+                label: t("navbar.upload"),
+              },
+            ]
+          : []),
         {
           label: t("common.button.shares"),
         },

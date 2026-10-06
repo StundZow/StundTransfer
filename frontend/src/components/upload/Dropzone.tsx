@@ -1,4 +1,12 @@
-import { Button, Center, createStyles, Group, Text, Menu } from "@mantine/core";
+import {
+  Button,
+  Center,
+  createStyles,
+  Group,
+  Text,
+  Menu,
+  useMantineColorScheme,
+} from "@mantine/core";
 import { Dropzone as MantineDropzone } from "@mantine/dropzone";
 import React, { ForwardedRef, useEffect, useRef, useState } from "react";
 import { TbCloudUpload, TbUpload, TbFolder } from "react-icons/tb";
@@ -30,6 +38,20 @@ const useStyles = createStyles((theme) => ({
   control: {
     position: "absolute",
     bottom: -20,
+  },
+
+  mobileDescription: {
+    display: "none",
+    "@media (pointer: coarse)": {
+      display: "inline",
+    },
+  },
+
+  desktopDescription: {
+    display: "inline",
+    "@media (pointer: coarse)": {
+      display: "none",
+    },
   },
 }));
 
@@ -65,7 +87,7 @@ const traverseDirectory = async (entry: any, path = ""): Promise<File[]> => {
     }
 
     const promises = entries.map((e) =>
-      traverseDirectory(e, path ? `${path}/${entry.name}` : entry.name)
+      traverseDirectory(e, path ? `${path}/${entry.name}` : entry.name),
     );
     const results = await Promise.all(promises);
     return results.flat();
@@ -132,9 +154,13 @@ const Dropzone = ({
   const openRef = useRef<() => void>();
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [isMac, setIsMac] = useState(false);
+  const { colorScheme } = useMantineColorScheme();
+  const dark = colorScheme === "dark";
 
   useEffect(() => {
     setIsMounted(true);
+    setIsMac(/Macintosh|Mac OS X/.test(navigator.userAgent));
   }, []);
 
   const isFolderUploadSupported =
@@ -215,10 +241,31 @@ const Dropzone = ({
             {title || <FormattedMessage id="upload.dropzone.title" />}
           </Text>
           <Text align="center" size="sm" mt="xs" color="dimmed">
-            <FormattedMessage
-              id="upload.dropzone.description"
-              values={{ maxSize: byteToHumanSizeString(maxShareSize) }}
-            />
+            <span className={classes.mobileDescription}>
+              <FormattedMessage
+                id={
+                  isMounted && !isFolderUploadSupported
+                    ? "upload.dropzone.description.mobile.no-folder"
+                    : "upload.dropzone.description.mobile"
+                }
+                values={{
+                  maxSize: byteToHumanSizeString(maxShareSize),
+                }}
+              />
+            </span>
+            <span className={classes.desktopDescription}>
+              <FormattedMessage
+                id={
+                  isMounted && !isFolderUploadSupported
+                    ? "upload.dropzone.description.desktop.no-folder"
+                    : "upload.dropzone.description.desktop"
+                }
+                values={{
+                  maxSize: byteToHumanSizeString(maxShareSize),
+                  shortcut: isMac ? "⌘+V" : "Ctrl+V",
+                }}
+              />
+            </span>
           </Text>
         </div>
       </MantineDropzone>
@@ -226,7 +273,7 @@ const Dropzone = ({
         {isFolderUploadSupported && (
           <Button
             className={classes.control}
-            variant="light"
+            variant={dark ? "filled" : "light"}
             size="sm"
             radius="xl"
             disabled={isUploading}
@@ -234,7 +281,11 @@ const Dropzone = ({
           >
             <TbFolder style={{ marginRight: 6 }} />
             <FormattedMessage
-              id={currentFilesSize > 0 ? "upload.button.folder.append" : "upload.button.folder"}
+              id={
+                currentFilesSize > 0
+                  ? "upload.button.folder.append"
+                  : "upload.button.folder"
+              }
             />
           </Button>
         )}

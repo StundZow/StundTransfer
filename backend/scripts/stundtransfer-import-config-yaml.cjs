@@ -28,6 +28,18 @@ const yaml = parse(fs.readFileSync(yamlPath, "utf8")) ?? {};
 const db = new DatabaseSync(dbPath);
 const rows = db.prepare("SELECT category, name, value, defaultValue FROM Config").all();
 const known = new Map(rows.map((r) => [`${r.category}.${r.name}`, r]));
+// Settings moved to another section in Pingvin Share X 2.0: a config.yaml
+// written for 1.x still imports them
+const MOVED = {
+  "general.sessionDuration": "security.sessionDuration",
+  "general.secureCookies": "security.secureCookies",
+  "email.enableEmailVerification": "security.enableEmailVerification",
+  "share.allowRegistration": "security.allowRegistration",
+  "share.allowUnauthenticatedShares": "security.allowUnauthenticatedShares",
+  "share.allowAdminAccessAllShares": "security.allowAdminAccessAllShares",
+  "email.enableShareEmailRecipients": "share.enableShareEmailRecipients",
+  "email.enableShareDownloadNotifications": "share.enableShareDownloadNotifications",
+};
 const update = db.prepare("UPDATE Config SET value = ?, updatedAt = ? WHERE category = ? AND name = ?");
 
 let imported = 0;
@@ -37,7 +49,9 @@ try {
   for (const [category, values] of Object.entries(yaml)) {
     if (["internal", "initUser"].includes(category) || typeof values !== "object" || !values) continue;
     for (const [name, raw] of Object.entries(values)) {
-      const key = `${category}.${name}`;
+      const key = known.has(`${category}.${name}`)
+        ? `${category}.${name}`
+        : MOVED[`${category}.${name}`] ?? `${category}.${name}`;
       const row = known.get(key);
       if (!row) {
         skipped.push(key);
@@ -48,7 +62,7 @@ try {
       if (value === row.defaultValue) value = null;
       if (value === row.value) continue;
       console.log(`${dryRun ? "[dry-run] " : ""}${key}: ${row.value ?? `(default ${row.defaultValue})`} -> ${value}`);
-      if (!dryRun) update.run(value, Date.now(), category, name);
+      if (!dryRun) update.run(value, Date.now(), row.category, row.name);
       imported++;
     }
   }

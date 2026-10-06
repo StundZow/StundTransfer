@@ -44,24 +44,28 @@ export class AuthService {
     isAdmin?: boolean,
     skipVerification?: boolean,
   ) {
-    const isFirstUser = (await this.prisma.user.count()) == 0;
     const enableEmailVerification = this.config.get(
-      "email.enableEmailVerification",
+      "security.enableEmailVerification",
     );
     const email = dto.email.toLowerCase().trim();
 
     const hash = dto.password ? await argon.hash(dto.password) : null;
     try {
-      const needsVerification =
-        !isFirstUser && !skipVerification && enableEmailVerification;
-
       return await this.prisma.$transaction(async (tx) => {
+      const adminExists =
+        (await tx.user.count({ where: { isAdmin: true } })) > 0;
+      const shouldBeAdmin =
+        isAdmin ?? (!adminExists && (await tx.user.count()) === 0);
+      const needsVerification =
+        !shouldBeAdmin && !skipVerification && enableEmailVerification;
+
         const user = await tx.user.create({
           data: {
+            displayName: dto.displayName?.trim() || null,
             email,
             username: dto.username,
             password: hash,
-            isAdmin: isAdmin ?? isFirstUser,
+            isAdmin: shouldBeAdmin,
             isActivated: !needsVerification,
             activationToken: needsVerification ? crypto.randomUUID() : null,
             activationTokenExpiresAt: needsVerification
@@ -74,6 +78,7 @@ export class AuthService {
           await this.emailService.sendVerificationEmail(
             user.email,
             user.activationToken,
+            user.displayName || user.username,
           );
           return { verificationRequired: true };
         }
@@ -212,7 +217,11 @@ export class AuthService {
         },
       });
 
-      await this.emailService.sendResetPasswordEmail(user.email, token);
+      await this.emailService.sendResetPasswordEmail(
+        user.email,
+        token,
+        user.displayName || user.username,
+      );
     });
   }
 
@@ -294,6 +303,7 @@ export class AuthService {
       await this.emailService.sendVerificationEmail(
         user.email,
         activationToken,
+        user.displayName || user.username,
       );
     });
   }
@@ -413,7 +423,7 @@ export class AuthService {
     tx?: Prisma.TransactionClient,
   ) {
     const prisma = tx || this.prisma;
-    const sessionDuration = this.config.get("general.sessionDuration");
+    const sessionDuration = this.config.get("security.sessionDuration");
     const { id, token } = await prisma.refreshToken.create({
       data: {
         userId,
@@ -442,7 +452,7 @@ export class AuthService {
     refreshToken?: string,
     accessToken?: string,
   ) {
-    const isSecure = this.config.get("general.secureCookies");
+    const isSecure = this.config.get("security.secureCookies");
     if (accessToken)
       response.cookie("access_token", accessToken, {
         sameSite: "lax",
@@ -451,7 +461,7 @@ export class AuthService {
       });
     if (refreshToken) {
       const now = moment();
-      const sessionDuration = this.config.get("general.sessionDuration");
+      const sessionDuration = this.config.get("security.sessionDuration");
       const maxAge = moment(now)
         .add(sessionDuration.value, sessionDuration.unit)
         .diff(now);

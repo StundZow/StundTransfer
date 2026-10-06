@@ -339,11 +339,25 @@ const stundTransferMessages: Record<string, Record<string, string>> = {
 export const upstreamOverrides: Record<string, Record<string, string>> = {
   "en-US": {
     "upload.dropzone.title": "Drag and drop your files or folders here to share them",
-    "upload.dropzone.description": "Up to {maxSize} in total.",
+    "upload.dropzone.description.desktop":
+      "Click or drop your files here. Use the button below for a whole folder, or press {shortcut} to paste text. Up to {maxSize} in total.",
+    "upload.dropzone.description.desktop.no-folder":
+      "Click or drop your files here, or press {shortcut} to paste text. Up to {maxSize} in total.",
+    "upload.dropzone.description.mobile":
+      "Tap here to pick files, photos or videos. Use the button below for a whole folder. Up to {maxSize} in total.",
+    "upload.dropzone.description.mobile.no-folder":
+      "Tap here to pick files, photos or videos. Up to {maxSize} in total.",
   },
   "fr-FR": {
     "upload.dropzone.title": "Glisse-dépose tes fichiers ou dossiers ici pour les partager",
-    "upload.dropzone.description": "Jusqu'à {maxSize} au total.",
+    "upload.dropzone.description.desktop":
+      "Clique ou glisse tes fichiers ici. Pour un dossier entier, utilise le bouton ci-dessous. {shortcut} colle du texte depuis le presse-papiers. Jusqu'à {maxSize} au total.",
+    "upload.dropzone.description.desktop.no-folder":
+      "Clique ou glisse tes fichiers ici. {shortcut} colle du texte depuis le presse-papiers. Jusqu'à {maxSize} au total.",
+    "upload.dropzone.description.mobile":
+      "Touche ici pour choisir des fichiers, photos ou vidéos. Pour un dossier entier, utilise le bouton ci-dessous. Jusqu'à {maxSize} au total.",
+    "upload.dropzone.description.mobile.no-folder":
+      "Touche ici pour choisir des fichiers, photos ou vidéos. Jusqu'à {maxSize} au total.",
     "upload.button.folder": "Choisir un dossier",
     "upload.button.folder.append": "Ajouter un dossier",
   },

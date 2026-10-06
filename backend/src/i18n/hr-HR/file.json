@@ -6,10 +6,13 @@
   "notEnoughSpace": "Nema dovoljno prostora na poslužitelju",
   "unexpectedChunk": "Primljen neočekivani dio (chunk)",
   "maxSizeExceeded": "Premašena maksimalna veličina dijeljenja",
+  "storageQuotaExceeded": "Vaša kvota za pohranu je premašena za {exceededSize}",
+  "reverseShareQuotaExceeded": "Kvota za pohranu vlasnika obrnutog dijeljenja premašena je za {exceededSize}",
   "zipError": "Pogreška pri stvaranju ZIP datoteke",
   "s3DeleteError": "Nije moguće obrisati datoteku s S3",
   "s3UploadInitError": "Inicijalizacija multipart prijenosa nije uspjela.",
   "s3SessionNotFound": "Sesija multipart prijenosa nije pronađena.",
   "s3UploadFailed": "Multipart prijenos nije uspio. Prijenos je prekinut.",
-  "s3SizeError": "Nije moguće dohvatiti veličinu datoteke"
+  "s3SizeError": "Nije moguće dohvatiti veličinu datoteke",
+  "s3NotSupported": "Unaprijed potpisane operacije podržane su samo za S3 pohranu."
 }

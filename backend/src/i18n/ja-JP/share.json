@@ -9,9 +9,13 @@
   "anonymousNoUpdate": "匿名共有は更新できません",
   "invalidExpiration": "有効期限が無効です",
   "maxExpirationExceeded": "有効期限が最大有効期限を超えています",
+  "storageQuotaExceeded": "ストレージクォータを {exceededSize} 超過しています",
+  "reverseShareQuotaExceeded": "ファイルリクエスト所有者のストレージクォータを {exceededSize} 超過しています",
   "wrongPassword": "パスワードが正しくありません",
   "tokenRequired": "共有トークンが必要です",
   "privateShare": "リバース共有の作成者のみがこの共有にアクセスできます",
   "maxViewsExceeded": "最大閲覧数を超過しました",
-  "restrictedToRecipients": "This share is restricted to specific recipients. Please log in to access it."
+  "restrictedToRecipients": "この共有は特定の受信者に制限されています。アクセスするにはログインしてください。",
+  "notAllowedToShare": "共有を作成する権限がありません",
+  "maxSharesExceeded": "アクティブな共有数の上限（{max}）に達しました"
 }

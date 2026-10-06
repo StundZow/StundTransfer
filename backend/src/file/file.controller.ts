@@ -3,16 +3,18 @@ import {
   Controller,
   Delete,
   Get,
+  HttpStatus,
   Param,
   Post,
   Query,
+  Req,
   Res,
   StreamableFile,
   UseGuards,
 } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
+import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import * as contentDisposition from "content-disposition";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { CreateShareGuard } from "src/share/guard/createShare.guard";
 import { StrictShareOwnerGuard } from "src/share/guard/strictShareOwner.guard";
 import { IdValidation } from "src/share/guard/shareIdValidation.guard";
@@ -30,6 +32,65 @@ function getValidRecipientId(recipientId?: string): string | undefined {
 @Controller("shares/:shareId/files")
 export class FileController {
   constructor(private fileService: FileService) {}
+
+  @Post("upload-init")
+  @SkipThrottle()
+  @UseGuards(IdValidation, CreateShareGuard, StrictShareOwnerGuard)
+  async uploadInit(
+    @Body()
+    body: {
+      id?: string;
+      name: string;
+      totalChunks: number;
+    },
+    @Param("shareId") shareId: string,
+  ) {
+    return await this.fileService.createPreSignedUploadUrls(
+      shareId,
+      body.name,
+      body.totalChunks,
+    );
+  }
+
+  @Post("upload-complete")
+  @SkipThrottle()
+  @UseGuards(IdValidation, CreateShareGuard, StrictShareOwnerGuard)
+  async uploadComplete(
+    @Body()
+    body: {
+      id?: string;
+      name: string;
+      uploadId: string;
+      parts: Array<{ ETag: string; PartNumber: number }>;
+    },
+    @Param("shareId") shareId: string,
+  ) {
+    return await this.fileService.completePreSignedUpload(
+      shareId,
+      body.id,
+      body.name,
+      body.uploadId,
+      body.parts,
+    );
+  }
+
+  @Post("upload-abort")
+  @SkipThrottle()
+  @UseGuards(IdValidation, CreateShareGuard, StrictShareOwnerGuard)
+  async uploadAbort(
+    @Body()
+    body: {
+      name: string;
+      uploadId: string;
+    },
+    @Param("shareId") shareId: string,
+  ) {
+    await this.fileService.abortPreSignedUpload(
+      shareId,
+      body.name,
+      body.uploadId,
+    );
+  }
 
   @Post()
   @SkipThrottle()
@@ -79,32 +140,91 @@ export class FileController {
     return new StreamableFile(zipStream);
   }
 
+  @Throttle({
+    default: {
+      limit: 1200,
+      ttl: 60 * 1000,
+    },
+  })
   @Get(":fileId")
   @UseGuards(FileSecurityGuard)
   async getFile(
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @Param("shareId") shareId: string,
     @Param("fileId") fileId: string,
     @Query("download") download = "true",
     @Query("recipient") recipientId?: string,
   ) {
-    const file = await this.fileService.get(shareId, fileId);
     const isDownload = download === "true";
+    const storageProvider = await this.fileService.getStorageProvider(shareId);
 
-    const headers = {
-      "Content-Type":
-        mime?.lookup?.(file.metaData.name) || "application/octet-stream",
-      "Content-Length": file.metaData.size,
-      "Content-Security-Policy": "sandbox",
+    if (storageProvider === "S3") {
+      const url = await this.fileService.getPreSignedDownloadUrl(
+        shareId,
+        fileId,
+        isDownload,
+      );
+      const fileName = await this.fileService.getFileName(shareId, fileId);
+      if (isDownload) {
+        void this.fileService.notifyRecipientDownload(
+          shareId,
+          fileName,
+          getValidRecipientId(recipientId),
+        );
+      }
+      res.status(302).setHeader("Location", url);
+      return;
+    }
+
+    const file = await this.fileService.get(shareId, fileId, req.headers.range);
+
+    const totalSize = parseInt(file.metaData.size, 10);
+
+    if (file.isRangeNotSatisfiable) {
+      res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
+      res.set({
+        "Content-Range": `bytes */${totalSize}`,
+        "Accept-Ranges": "bytes",
+      });
+      return;
+    }
+
+    const mimeType =
+      mime?.lookup?.(file.metaData.name) || "application/octet-stream";
+
+    const isPassiveMedia =
+      mimeType.startsWith("video/") ||
+      mimeType.startsWith("audio/") ||
+      (mimeType.startsWith("image/") && mimeType !== "image/svg+xml") ||
+      mimeType === "text/plain";
+
+    const headers: Record<string, string | number> = {
+      "Content-Type": mimeType,
+      "Accept-Ranges": "bytes",
+      "X-Content-Type-Options": "nosniff",
       "Content-Disposition": contentDisposition(
         file.metaData.name,
         isDownload ? undefined : { type: "inline" },
       ),
     };
 
+    if (file.range) {
+      res.status(HttpStatus.PARTIAL_CONTENT);
+      headers["Content-Range"] =
+        `bytes ${file.range.start}-${file.range.end}/${totalSize}`;
+      headers["Content-Length"] = file.range.end - file.range.start + 1;
+    } else {
+      headers["Content-Length"] = totalSize;
+    }
+
+    if (!isPassiveMedia) {
+      headers["Content-Security-Policy"] = "sandbox";
+    }
+
     res.set(headers);
 
-    if (isDownload) {
+    if (isDownload && !file.range) {
       void this.fileService.notifyRecipientDownload(
         shareId,
         file.metaData.name,

@@ -1,12 +1,13 @@
 {
-  "redisUrlNotSet": "Redis URL is not set",
-  "redisTimedOut": "Redis timed out",
-  "redisConnectionFailed": "Redis connection failed",
-  "redisUnexpectedResponse": "Unexpected response from Redis",
-  "redisError": "Redis error",
+  "redisUrlNotSet": "Redis URL nije postavljen",
+  "redisTimedOut": "Redis veza je istekla",
+  "redisConnectionFailed": "Povezivanje s Redisom nije uspjelo",
+  "redisUnexpectedResponse": "Neočekivani odgovor od Redisa",
+  "redisError": "Redis pogreška",
   "variableNotFound": "Konfiguracijska varijabla nije pronađena",
   "editNotAllowed": "Dopušteno vam je ažurirati konfiguracijske varijable samo putem datoteke config.yaml",
   "invalidType": "Konfiguracijska varijabla mora biti tipa {type}",
   "shareIdLengthValidation": "Duljina ID-a dijeljenja mora biti između 2 i 50",
-  "zipCompressionLevelValidation": "Razina Zip kompresije mora biti između 0 i 9"
+  "zipCompressionLevelValidation": "Razina Zip kompresije mora biti između 0 i 9",
+  "deprecatedVariable": "Config variable '{legacyKey}' is deprecated. Please move it to '{modernKey}' in your config.yaml"
 }

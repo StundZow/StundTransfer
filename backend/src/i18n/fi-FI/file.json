@@ -6,10 +6,13 @@
   "notEnoughSpace": "Palvelimella ei ole tarpeeksi tilaa",
   "unexpectedChunk": "Vastaanotettiin odottamaton lohko",
   "maxSizeExceeded": "Jaon enimmäiskoko ylittyi",
+  "storageQuotaExceeded": "Tallennustilakiintiösi on ylittynyt {exceededSize} verran",
+  "reverseShareQuotaExceeded": "Käänteisen jaon omistajan tallennustilakiintiö on ylittynyt {exceededSize} verran",
   "zipError": "Virhe luotaessa ZIP-tiedostoa",
   "s3DeleteError": "Tiedostoa ei voitu poistaa S3:sta",
   "s3UploadInitError": "Moniosaisen latauksen alustus epäonnistui.",
   "s3SessionNotFound": "Moniosaisen latauksen istuntoa ei löytynyt.",
   "s3UploadFailed": "Moniosainen lataus epäonnistui. Lataus on keskeytetty.",
-  "s3SizeError": "Tiedoston kokoa ei voitu hakea"
+  "s3SizeError": "Tiedoston kokoa ei voitu hakea",
+  "s3NotSupported": "Esiallekirjoitetut toiminnot ovat tuettuja vain S3-tallennustilalle."
 }

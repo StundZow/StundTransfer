@@ -65,7 +65,7 @@ Pour un NAS **Synology à processeur Intel ou AMD** (gamme « + » : DS224+, DS2
    ```
 
 4. **Ouvre** `http://<ip-du-nas>:3000/auth/signUp` : le premier compte créé est administrateur.
-5. **Administration → Paramètres** : désactive les inscriptions (Partage), puis active le **Dépôt public** (StundTransfer). Choisis le dossier de réception dans **Administration → Dossier de réception**.
+5. **Administration → Paramètres** : désactive les inscriptions (Sécurité & Accès), puis active le **Dépôt public** (StundTransfer). Choisis le dossier de réception dans **Administration → Dossier de réception**.
 6. **Accès depuis internet** : adresse DDNS, certificat Let's Encrypt et proxy inversé DSM (HTTPS 443 → `localhost:3000`). N'ouvre jamais le port 3000 sur ta box.
 
 Le guide complet (réglages, droits, mises à jour) est dans [STUNDTRANSFER.md](https://github.com/StundZow/StundTransfer/blob/stundtransfer/STUNDTRANSFER.md).

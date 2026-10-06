@@ -1,12 +1,13 @@
 {
-  "redisUrlNotSet": "Redis URL is not set",
-  "redisTimedOut": "Redis timed out",
-  "redisConnectionFailed": "Redis connection failed",
-  "redisUnexpectedResponse": "Unexpected response from Redis",
-  "redisError": "Redis error",
+  "redisUrlNotSet": "Redis URL -osoitetta ei ole asetettu",
+  "redisTimedOut": "Redis-yhteys aikakatkaistiin",
+  "redisConnectionFailed": "Redis-yhteys epäonnistui",
+  "redisUnexpectedResponse": "Odottamaton vastaus Redikseltä",
+  "redisError": "Redis-virhe",
   "variableNotFound": "Asetusmuuttujaa ei löytynyt",
   "editNotAllowed": "Asetusmuuttujia saa päivittää vain config.yaml-tiedoston kautta",
   "invalidType": "Asetusmuuttujan on oltava tyyppiä {type}",
   "shareIdLengthValidation": "Jaon ID:n pituuden on oltava välillä 2-50",
-  "zipCompressionLevelValidation": "Zip-pakkaustason on oltava välillä 0-9"
+  "zipCompressionLevelValidation": "Zip-pakkaustason on oltava välillä 0-9",
+  "deprecatedVariable": "Config variable '{legacyKey}' is deprecated. Please move it to '{modernKey}' in your config.yaml"
 }
