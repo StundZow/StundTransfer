@@ -96,7 +96,7 @@ const Admin = () => {
               title: t("stundtransfer.admin.official-update"),
               icon: TbRefresh,
               route:
-                "https://github.com/StundZow/pingvin-share-x/blob/stundtransfer/STUNDTRANSFER.md#r%C3%A9cup%C3%A9rer-une-mise-%C3%A0-jour-du-projet-officiel-upstream",
+                "https://github.com/StundZow/StundTransfer/blob/stundtransfer/STUNDTRANSFER.md#r%C3%A9cup%C3%A9rer-une-mise-%C3%A0-jour-du-projet-officiel-upstream",
             },
           ]);
         }
