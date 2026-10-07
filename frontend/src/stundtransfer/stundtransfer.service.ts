@@ -250,6 +250,24 @@ const listNasPublic = async (token: string, path: string): Promise<NasPublicList
 
 const withPath = (path?: string) => (path ? `?path=${encodeURIComponent(path)}` : "");
 
+// "Mettre à jour" page
+
+export type UpdateStatus = {
+  current: { sha: string; date: string | null } | null;
+  latest: { sha: string; date: string | null } | null;
+  available: boolean;
+  // Waiting for the DSM task, which deletes the request when it starts
+  requestedAt: string | null;
+  lastLog: string | null;
+  checkFailed: boolean;
+};
+
+const getUpdateStatus = async (): Promise<UpdateStatus> =>
+  (await api.get("stundtransfer/admin/update")).data;
+
+const requestUpdate = async (): Promise<UpdateStatus> =>
+  (await api.post("stundtransfer/admin/update")).data;
+
 /** Plain links: the browser downloads them itself (resumable files, no memory used). */
 export const nasDownloadUrl = (token: string, path?: string) =>
   `/api/stundtransfer/nas/${token}/download${withPath(path)}`;
@@ -279,4 +297,6 @@ export default {
   deleteNasLink,
   getNasLink,
   listNasPublic,
+  getUpdateStatus,
+  requestUpdate,
 };

@@ -75,5 +75,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The "Mettre à jour" page compares this with the newest image on GitHub
+          build-args: |
+            STUNDTRANSFER_VERSION=${{ github.sha }}
+            STUNDTRANSFER_BUILT_AT=${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

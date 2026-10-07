@@ -114,7 +114,37 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 
 ## Mettre à jour le NAS avec la dernière image StundTransfer
 
-**Automatique** : une tâche du Planificateur de tâches DSM (utilisateur root) lance `docker compose pull` puis relance le projet seulement si une nouvelle image est arrivée (voir le script donné à l'installation). L'image n'est publiée que si les tests passent, et le conteneur copie la base dans `data/backups-auto/` à chaque démarrage (10 dernières copies). **À la main** :
+**Bouton « Mettre à jour »** (Administration → Mettre à jour) : la page compare la version installée (`STUNDTRANSFER_VERSION`, commit inscrit dans l'image par le workflow) avec la dernière image publiée sur GitHub (publiée seulement si les tests passent). Le bouton dépose `data/update-requested` ; une tâche DSM lancée **chaque minute en root** le voit, télécharge l'image et relance le projet (le conteneur n'a jamais accès à Docker). Le conteneur copie la base dans `data/backups-auto/` à chaque démarrage (10 dernières copies). Le résultat est écrit dans `update.log` (copie lisible par la page dans `data/update.log`).
+
+Tâche à créer une fois : Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur ; utilisateur **root** ; tous les jours, **toutes les minutes** ; script :
+
+```sh
+export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+DIR=/volume1/docker/pingvin
+[ -e "$DIR/data/update-requested" ] || [ -L "$DIR/data/update-requested" ] || exit 0
+rm -f "$DIR/data/update-requested"
+cd "$DIR" || exit 1
+IMAGE=ghcr.io/stundzow/stundtransfer:latest
+PROJECT=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' pingvin 2>/dev/null)
+[ -n "$PROJECT" ] || PROJECT=pingvin
+if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="docker-compose"; fi
+OLD=$(docker image inspect --format '{{.Id}}' $IMAGE 2>/dev/null)
+if $DC -p "$PROJECT" pull --quiet; then
+  NEW=$(docker image inspect --format '{{.Id}}' $IMAGE 2>/dev/null)
+  if [ "$OLD" != "$NEW" ]; then
+    if $DC -p "$PROJECT" up -d; then RESULT="mise a jour installee"; else RESULT="ECHEC du redemarrage"; fi
+    docker image prune -f >/dev/null
+  else
+    RESULT="deja a jour"
+  fi
+else
+  RESULT="ECHEC du telechargement de l'image"
+fi
+echo "$(date '+%Y-%m-%d %H:%M') $RESULT" >> "$DIR/update.log"
+tail -n 20 "$DIR/update.log" > "$DIR/.update.log.tmp" && chmod 644 "$DIR/.update.log.tmp" && mv -f "$DIR/.update.log.tmp" "$DIR/data/update.log"
+```
+
+**À la main** :
 
 1. Vérifie que le build GitHub est vert : https://github.com/StundZow/StundTransfer/actions
 2. Container Manager → **Projet** → `pingvin` → **Arrêter**, puis **Nettoyer**.
@@ -170,12 +200,13 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/prisma/seed/config.seed.ts` | Sections de réglages `stundtransfer` et `stundtransferpaths` (ajoutées à la fin) |
 | `frontend/src/services/config.service.ts` | Autorise la section `stundtransfer` |
 | `frontend/src/components/admin/configuration/ConfigurationNavBar.tsx` | Entrée « StundTransfer » dans les paramètres |
-| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Partager depuis le NAS », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
+| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Partager depuis le NAS », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème », « Mettre à jour » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
 | `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) |
 | `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage ; en mode dépôt, un lien de dépôt ne permet jamais de créer un partage classique |
 | `backend/src/reverseShare/reverseShare.controller.ts` | Seuls les admins créent des liens de dépôt |
 | `backend/src/main.ts` | `TRUST_PROXY=true` ne fait confiance qu'aux relais locaux (DSM, Caddy), pour que les limites anti-abus ne se contournent pas ; délai d'envoi d'une requête porté à 2 h (connexions lentes) ; taille max des morceaux jamais réduite pendant que le serveur tourne |
 | `frontend/src/pages/auth/signIn.tsx`, `frontend/src/utils/router.util.ts` | Redirection après connexion limitée aux pages du site (faille `?redirect=javascript:` de Pingvin) |
+| `Dockerfile`, `.github/workflows/stundtransfer-image.yml` | Commit et date de construction inscrits dans l'image (`STUNDTRANSFER_VERSION`, `STUNDTRANSFER_BUILT_AT`) pour la page « Mettre à jour » |
 | `scripts/docker/entrypoint.sh` | Copie de la base dans `data/backups-auto/` à chaque démarrage, avant les migrations (10 gardées) |
 | `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
 

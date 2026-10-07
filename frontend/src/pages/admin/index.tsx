@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { TbFolder, TbInbox, TbLink, TbPalette, TbRefresh, TbSend, TbSettings, TbShare, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder, TbSend, TbPalette, TbShare
+import { TbCloudDownload, TbFolder, TbInbox, TbLink, TbPalette, TbRefresh, TbSend, TbSettings, TbShare, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder, TbSend, TbPalette, TbShare, TbCloudDownload
 import { FormattedMessage } from "react-intl";
 import Meta from "../../components/Meta";
 import useTranslate from "../../hooks/useTranslate.hook";
@@ -18,6 +18,7 @@ import configService from "../../services/config.service";
 // StundTransfer
 import useConfig from "../../hooks/config.hook";
 import { isClassicSharingEnabled } from "../../stundtransfer/classicSharing";
+import stundTransferService from "../../stundtransfer/stundtransfer.service";
 
 const useStyles = createStyles((theme) => ({
   item: {
@@ -87,15 +88,39 @@ const Admin = () => {
       icon: TbSettings,
       route: "/admin/config/stundtransfer", // StundTransfer: was /admin/config/general
     },
+    {
+      // StundTransfer: install the newest StundTransfer image in one click
+      title: t("stundtransfer.update.card"),
+      icon: TbCloudDownload,
+      route: "/admin/update",
+    },
   ]);
+
+  // StundTransfer: the update card says when a new version is waiting
+  useEffect(() => {
+    stundTransferService
+      .getUpdateStatus()
+      .then((status) => {
+        if (status.available)
+          setManagementOptions((options) =>
+            options.map((option) =>
+              option.route === "/admin/update"
+                ? { ...option, title: t("stundtransfer.update.card-available") }
+                : option,
+            ),
+          );
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     configService
       .isNewReleaseAvailable()
       .then((isNewReleaseAvailable) => {
         if (isNewReleaseAvailable) {
-          setManagementOptions([
-            ...managementOptions,
+          // StundTransfer: functional update (another check updates the cards too)
+          setManagementOptions((options) => [
+            ...options,
             {
               // StundTransfer: an official release must be merged into the fork
               // (installing the official image would remove StundTransfer)

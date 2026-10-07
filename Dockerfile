@@ -63,6 +63,11 @@ WORKDIR /opt/app
 COPY ./reverse-proxy  /opt/app/reverse-proxy
 COPY ./scripts/docker ./scripts/docker
 
+# StundTransfer: which commit this image was built from, and when (page "Mettre à jour")
+ARG STUNDTRANSFER_VERSION=""
+ARG STUNDTRANSFER_BUILT_AT=""
+ENV STUNDTRANSFER_VERSION=$STUNDTRANSFER_VERSION     STUNDTRANSFER_BUILT_AT=$STUNDTRANSFER_BUILT_AT
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=90s CMD /bin/sh -c '(if [[ "$CADDY_DISABLED" = "true" ]]; then curl -fs http://localhost:${BACKEND_PORT:-8080}/api/health; else curl -fs http://localhost:3000/api/health; fi) || exit 1'
