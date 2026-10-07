@@ -196,8 +196,8 @@ const removeDeposit = async (id: string) =>
 
 export type NasListing = {
   path: string;
-  folders: string[];
-  files: { name: string; size: number }[];
+  folders: { name: string; modifiedAt: string | null }[];
+  files: { name: string; size: number; modifiedAt: string | null }[];
 };
 
 export type NasLink = {
@@ -205,14 +205,21 @@ export type NasLink = {
   token: string;
   path: string;
   name: string;
-  // null: the file was moved or deleted since
+  folder: boolean;
+  // null: a folder, or moved or deleted since (missing)
   size: number | null;
+  missing: boolean;
   createdAt: string;
   expiresAt: string | null;
   downloads: number;
 };
 
-export type NasPublicLink = { name: string; size: number; expiresAt: string | null };
+export type NasPublicLink = {
+  name: string;
+  folder: boolean;
+  size: number | null;
+  expiresAt: string | null;
+};
 
 const listNas = async (path: string): Promise<NasListing> =>
   (await api.get("stundtransfer/admin/nas", { params: { path } })).data;
@@ -228,8 +235,16 @@ const deleteNasLink = async (id: string) => api.delete(`stundtransfer/admin/nas-
 const getNasLink = async (token: string): Promise<NasPublicLink> =>
   (await api.get(`stundtransfer/nas/${token}`, { timeout: INFO_TIMEOUT_MS })).data;
 
-/** Plain link: the browser downloads it itself (resumable, no memory used). */
-export const nasDownloadUrl = (token: string) => `/api/stundtransfer/nas/${token}/download`;
+const listNasPublic = async (token: string, path: string): Promise<NasListing> =>
+  (await api.get(`stundtransfer/nas/${token}/list`, { params: { path } })).data;
+
+const withPath = (path?: string) => (path ? `?path=${encodeURIComponent(path)}` : "");
+
+/** Plain links: the browser downloads them itself (resumable files, no memory used). */
+export const nasDownloadUrl = (token: string, path?: string) =>
+  `/api/stundtransfer/nas/${token}/download${withPath(path)}`;
+export const nasZipUrl = (token: string, path?: string) =>
+  `/api/stundtransfer/nas/${token}/zip${withPath(path)}`;
 
 export default {
   getPublicInfo,
@@ -253,4 +268,5 @@ export default {
   createNasLink,
   deleteNasLink,
   getNasLink,
+  listNasPublic,
 };

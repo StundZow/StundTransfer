@@ -1,10 +1,7 @@
-// StundTransfer: share files already on the NAS (admin only, see middleware /admin/*).
-// A link downloads the file straight from the NAS, nothing is copied.
+// StundTransfer: share files and folders already on the NAS (admin only, see
+// middleware /admin/*). A link downloads straight from the NAS, nothing is copied.
 import {
   ActionIcon,
-  Alert,
-  Anchor,
-  Breadcrumbs,
   Button,
   Group,
   Paper,
@@ -13,14 +10,21 @@ import {
   Text,
   Title,
   Tooltip,
-  UnstyledButton,
 } from "@mantine/core";
 import { useEffect, useState } from "react";
-import { TbCopy, TbFile, TbFolder, TbInfoCircle, TbLink, TbTrash } from "react-icons/tb";
+import {
+  TbCopy,
+  TbFile,
+  TbFolder,
+  TbFolderShare,
+  TbLink,
+  TbTrash,
+} from "react-icons/tb";
 import { FormattedMessage, useIntl } from "react-intl";
 import Meta from "../../components/Meta";
 import CenterLoader from "../../components/core/CenterLoader";
 import useTranslate from "../../hooks/useTranslate.hook";
+import NasBrowser from "../../stundtransfer/NasBrowser";
 import { formatSize } from "../../stundtransfer/depositFiles";
 import stundTransferService, {
   NasLink,
@@ -30,15 +34,6 @@ import toast from "../../utils/toast.util";
 
 const EXPIRY_CHOICES = ["", "7", "30", "90"];
 
-const rowStyle = (theme: any) => ({
-  padding: "6px 8px",
-  borderRadius: theme.radius.sm,
-  "&:hover": {
-    backgroundColor:
-      theme.colorScheme === "dark" ? theme.colors.dark[5] : theme.colors.gray[1],
-  },
-});
-
 const NasSharePage = () => {
   const t = useTranslate();
   const intl = useIntl();
@@ -46,7 +41,6 @@ const NasSharePage = () => {
   const [listing, setListing] = useState<NasListing>();
   const [links, setLinks] = useState<NasLink[]>();
   const [expiry, setExpiry] = useState("");
-  const size = (bytes: number) => formatSize(bytes, intl.locale);
 
   const open = (target: string) =>
     stundTransferService.listNas(target).then(setListing).catch(toast.axiosError);
@@ -71,12 +65,10 @@ const NasSharePage = () => {
       .then(() => toast.success(message))
       .catch(() => toast.success(linkUrl(link)));
 
-  const create = (file: string) =>
+  // `path`: file or folder relative to the mounted folder
+  const create = (path: string) =>
     stundTransferService
-      .createNasLink(
-        [...(listing?.path ? [listing.path] : []), file].join("/"),
-        expiry ? Number(expiry) : undefined,
-      )
+      .createNasLink(path, expiry ? Number(expiry) : undefined)
       .then((link) => {
         copy(link, t("stundtransfer.nas.created"));
         refreshLinks();
@@ -93,7 +85,7 @@ const NasSharePage = () => {
       .catch(toast.axiosError);
 
   if (!rootName) return <CenterLoader />;
-  const parts = (listing?.path ?? "").split("/").filter(Boolean);
+  const currentFolder = listing?.path ?? "";
 
   return (
     <>
@@ -102,86 +94,49 @@ const NasSharePage = () => {
         <FormattedMessage id="stundtransfer.nas.title" />
       </Title>
       <Stack>
-        <Alert icon={<TbInfoCircle />} variant="light">
-          <FormattedMessage id="stundtransfer.nas.help" />
-        </Alert>
-
         <Paper withBorder radius="md" p="md">
-          <Group position="apart" mb="sm">
-            <Breadcrumbs separator="›">
-              {[rootName, ...parts].map((name, i) => (
-                <Anchor
-                  key={i}
-                  component="button"
-                  type="button"
-                  onClick={() => open(parts.slice(0, i).join("/"))}
+          <NasBrowser
+            rootLabel={rootName}
+            listing={listing}
+            onOpen={open}
+            nameSortAtRoot
+            headerActions={
+              <>
+                <Select
+                  size="xs"
+                  w={160}
+                  label={t("stundtransfer.nas.expires")}
+                  value={expiry}
+                  onChange={(value) => setExpiry(value ?? "")}
+                  data={EXPIRY_CHOICES.map((days) => ({
+                    value: days,
+                    label: days
+                      ? t("stundtransfer.nas.expires.days", { days })
+                      : t("stundtransfer.nas.expires.never"),
+                  }))}
+                />
+                {/* The whole mounted folder is never shared */}
+                <Button
+                  size="xs"
+                  leftIcon={<TbFolderShare />}
+                  disabled={!currentFolder}
+                  onClick={() => create(currentFolder)}
                 >
-                  {name}
-                </Anchor>
-              ))}
-            </Breadcrumbs>
-            <Select
-              size="xs"
-              w={160}
-              label={t("stundtransfer.nas.expires")}
-              value={expiry}
-              onChange={(value) => setExpiry(value ?? "")}
-              data={EXPIRY_CHOICES.map((days) => ({
-                value: days,
-                label: days
-                  ? t("stundtransfer.nas.expires.days", { days })
-                  : t("stundtransfer.nas.expires.never"),
-              }))}
-            />
-          </Group>
-
-          {!listing ? (
-            <CenterLoader />
-          ) : listing.folders.length + listing.files.length === 0 ? (
-            <Text color="dimmed" size="sm" py="md">
-              <FormattedMessage id="stundtransfer.nas.empty" />
-            </Text>
-          ) : (
-            <Stack spacing={2} mah={480} sx={{ overflowY: "auto" }}>
-              {listing.folders.map((folder) => (
-                <UnstyledButton
-                  key={`d:${folder}`}
-                  onClick={() => open([...parts, folder].join("/"))}
-                  sx={rowStyle}
-                >
-                  <Group spacing="xs" noWrap>
-                    <TbFolder />
-                    <Text size="sm" truncate>
-                      {folder}
-                    </Text>
-                  </Group>
-                </UnstyledButton>
-              ))}
-              {listing.files.map((file) => (
-                <Group key={`f:${file.name}`} position="apart" noWrap sx={rowStyle}>
-                  <Group spacing="xs" noWrap sx={{ minWidth: 0 }}>
-                    <TbFile />
-                    <Text size="sm" truncate>
-                      {file.name}
-                    </Text>
-                  </Group>
-                  <Group spacing="xs" noWrap>
-                    <Text size="xs" color="dimmed" sx={{ whiteSpace: "nowrap" }}>
-                      {size(file.size)}
-                    </Text>
-                    <Button
-                      size="xs"
-                      variant="light"
-                      leftIcon={<TbLink />}
-                      onClick={() => create(file.name)}
-                    >
-                      <FormattedMessage id="stundtransfer.nas.create" />
-                    </Button>
-                  </Group>
-                </Group>
-              ))}
-            </Stack>
-          )}
+                  <FormattedMessage id="stundtransfer.nas.link-folder" />
+                </Button>
+              </>
+            }
+            fileActions={(_file, path) => (
+              <Button
+                size="xs"
+                variant="light"
+                leftIcon={<TbLink />}
+                onClick={() => create(path)}
+              >
+                <FormattedMessage id="stundtransfer.nas.create" />
+              </Button>
+            )}
+          />
         </Paper>
 
         <Title order={4}>
@@ -198,24 +153,29 @@ const NasSharePage = () => {
             {links.map((link) => (
               <Paper key={link.id} withBorder radius="md" p="sm">
                 <Group position="apart" noWrap>
-                  <Stack spacing={0} sx={{ minWidth: 0 }}>
-                    <Text size="sm" weight={600} truncate title={link.path}>
-                      {link.name}
-                    </Text>
-                    <Text size="xs" color="dimmed">
-                      {link.size === null
-                        ? t("stundtransfer.nas.missing")
-                        : size(link.size)}
-                      {" · "}
-                      {t("stundtransfer.nas.downloads", { count: link.downloads })}
-                      {" · "}
-                      {link.expiresAt
-                        ? t("stundtransfer.nas.until", {
-                            date: intl.formatDate(link.expiresAt),
-                          })
-                        : t("stundtransfer.nas.expires.never")}
-                    </Text>
-                  </Stack>
+                  <Group spacing="sm" noWrap sx={{ minWidth: 0 }}>
+                    {link.folder ? <TbFolder /> : <TbFile />}
+                    <Stack spacing={0} sx={{ minWidth: 0 }}>
+                      <Text size="sm" weight={600} truncate title={link.path}>
+                        {link.name}
+                      </Text>
+                      <Text size="xs" color="dimmed">
+                        {link.missing
+                          ? t("stundtransfer.nas.missing")
+                          : link.folder
+                            ? t("stundtransfer.nas.folder")
+                            : formatSize(link.size ?? 0, intl.locale)}
+                        {" · "}
+                        {t("stundtransfer.nas.downloads", { count: link.downloads })}
+                        {" · "}
+                        {link.expiresAt
+                          ? t("stundtransfer.nas.until", {
+                              date: intl.formatDate(link.expiresAt),
+                            })
+                          : t("stundtransfer.nas.expires.never")}
+                      </Text>
+                    </Stack>
+                  </Group>
                   <Group spacing={4} noWrap>
                     <Tooltip label={t("stundtransfer.nas.copy")} withArrow>
                       <ActionIcon

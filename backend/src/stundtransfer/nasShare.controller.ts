@@ -1,4 +1,4 @@
-// StundTransfer: HTTP API of the links to files already on the NAS.
+// StundTransfer: HTTP API of the links to files and folders already on the NAS.
 import {
   Body,
   Controller,
@@ -21,7 +21,11 @@ import { GetUser } from "src/auth/decorator/getUser.decorator";
 import { AdministratorGuard } from "src/auth/guard/isAdmin.guard";
 import { JwtGuard } from "src/auth/guard/jwt.guard";
 import { CreateNasLinkDTO } from "./dto/nasLink.dto";
-import { NasDownload, NasShareService } from "./nasShare.service";
+import { NasFileDownload, NasShareService } from "./nasShare.service";
+
+// Sent straight through: DSM's reverse proxy (nginx) would otherwise first
+// copy big downloads to a temporary file on the NAS
+const NO_PROXY_BUFFERING = { "X-Accel-Buffering": "no" };
 
 @Controller("stundtransfer")
 export class NasShareController {
@@ -63,21 +67,28 @@ export class NasShareController {
     return this.nasShare.getPublic(token);
   }
 
+  @Get("nas/:token/list")
+  @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
+  listLink(@Param("token") token: string, @Query("path") path?: string) {
+    return this.nasShare.listPublic(token, path);
+  }
+
   // Download managers open several ranges at once and resume: a higher limit
   @Get("nas/:token/download")
   @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   async download(
     @Param("token") token: string,
+    @Query("path") path: string | undefined,
     @Req() request: Request,
     @Res() response: Response,
   ) {
-    const download = await this.nasShare.openDownload(token, request.headers.range);
+    const download = await this.nasShare.openFile(token, path, request.headers.range);
     if (download.unsatisfiable) {
       response.status(416).set("Content-Range", `bytes */${download.size}`).end();
       return;
     }
     const { name, size, start, end, partial, stream } = download as Extract<
-      NasDownload,
+      NasFileDownload,
       { unsatisfiable: false }
     >;
     response.status(partial ? 206 : 200).set({
@@ -86,6 +97,7 @@ export class NasShareController {
       "Content-Disposition": contentDisposition(name),
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store",
+      ...NO_PROXY_BUFFERING,
       ...(partial ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
     });
     stream.on("error", (e) => {
@@ -95,5 +107,30 @@ export class NasShareController {
     // Download cancelled: stop reading the disk
     response.on("close", () => stream.destroy());
     stream.pipe(response);
+  }
+
+  @Get("nas/:token/zip")
+  @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
+  async zip(
+    @Param("token") token: string,
+    @Query("path") path: string | undefined,
+    @Res() response: Response,
+  ) {
+    const { name, archive } = await this.nasShare.openZip(token, path);
+    response.status(200).set({
+      "Content-Type": "application/zip",
+      "Content-Disposition": contentDisposition(name),
+      "Cache-Control": "private, no-store",
+      ...NO_PROXY_BUFFERING,
+    });
+    archive.on("error", (e) => {
+      this.logger.warn(`NAS zip of link ${token.slice(0, 6)}…: ${e.message}`);
+      response.destroy(e);
+    });
+    // Download cancelled: stop reading the disk
+    response.on("close", () => {
+      if (!response.writableFinished) archive.abort();
+    });
+    archive.pipe(response);
   }
 }
