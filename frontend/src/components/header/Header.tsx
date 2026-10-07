@@ -25,6 +25,7 @@ import ActionAvatar from "./ActionAvatar";
 import NavbarShareMenu from "./NavbarShareMenu";
 // StundTransfer: visitors only get a small sign-in icon
 import GuestSignInButton from "../../stundtransfer/GuestSignInButton";
+import NasShareButton from "../../stundtransfer/NasShareButton";
 import {
   DEPOSITS_PAGE,
   isClassicSharingEnabled,
@@ -244,6 +245,17 @@ const Header = () => {
     const depositsLink = { link: DEPOSITS_PAGE, label: t("stundtransfer.admin.title") };
     authenticatedLinks = [depositsLink, { component: <ActionAvatar /> }];
     if (user) mobileRootLinks = [depositsLink, { label: t("common.button.profile") }];
+  }
+  // StundTransfer: admins share NAS files from the header, right of "Dépôts reçus"
+  if (user?.isAdmin) {
+    authenticatedLinks.splice(authenticatedLinks.length - 1, 0, {
+      component: <NasShareButton />,
+    });
+    mobileRootLinks = [
+      mobileRootLinks[0],
+      { link: "/admin/nas", label: t("stundtransfer.nas.title") },
+      ...mobileRootLinks.slice(1),
+    ];
   }
 
   const mobileShareLinks: NavLink[] = [
