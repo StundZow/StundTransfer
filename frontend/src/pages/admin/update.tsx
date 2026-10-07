@@ -62,7 +62,11 @@ const UpdatePage = () => {
         setStatus(current);
         setPhase("waiting");
       })
-      .catch(toast.axiosError);
+      .catch((e) =>
+        e?.response?.data?.error === "stund_updater_unreachable"
+          ? toast.error(t("stundtransfer.update.unreachable"))
+          : toast.axiosError(e),
+      );
   };
 
   if (!status) return <CenterLoader />;

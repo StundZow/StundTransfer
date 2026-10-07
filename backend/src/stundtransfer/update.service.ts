@@ -6,11 +6,12 @@
 //   API mode, reachable only on the Docker network, with a token) does it at
 //   once, nothing runs in a loop;
 // - otherwise: a request file in the data folder, for a DSM scheduled task.
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { HttpStatus, Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { User } from "@prisma/client";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { DATA_DIRECTORY } from "src/constants";
+import { stundError } from "./deposit.service";
 
 const REPO = process.env.STUNDTRANSFER_REPO || "StundZow/StundTransfer";
 const BRANCH = process.env.STUNDTRANSFER_BRANCH || "stundtransfer";
@@ -128,17 +129,32 @@ export class UpdateService implements OnModuleInit {
       PENDING_FILE,
       JSON.stringify({ from: CURRENT, at: new Date().toISOString(), by: user.username }),
     );
-    // The updater stops this container to replace it: its answer may never come
-    fetch(UPDATER_URL, {
-      headers: { Authorization: `Bearer ${UPDATER_TOKEN}` },
-      signal: AbortSignal.timeout(15 * 60 * 1000),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`answered ${response.status}`);
-      })
-      .catch((e) => {
-        if (e?.name !== "AbortError") this.logger.warn(`Updater: ${e?.message ?? e}`);
+    // Watchtower's API wants a POST; with async=true it answers 202 at once and
+    // then replaces this container in the background
+    const url = new URL(UPDATER_URL);
+    url.searchParams.set("async", "true");
+    let problem: string | null = null;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${UPDATER_TOKEN}` },
+        signal: AbortSignal.timeout(15_000),
       });
+      // 429: an update is already running, fine
+      if (!response.ok && response.status !== 429) problem = `answered ${response.status}`;
+    } catch (e) {
+      problem = e?.cause?.code ?? e?.message ?? String(e);
+    }
+    if (problem) {
+      this.logger.warn(`Updater: ${problem}`);
+      await fs.rm(PENDING_FILE, { force: true });
+      await this.log(`ECHEC : l'assistant de mise a jour ne repond pas (${problem})`);
+      throw stundError(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "stund_updater_unreachable",
+        "The update assistant does not answer",
+      );
+    }
     return this.status();
   }
 }
