@@ -114,6 +114,8 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 
 ## Mettre à jour le NAS avec la dernière image StundTransfer
 
+**Bouton « Mettre à jour » sans aucune boucle (recommandé)** : un conteneur Watchtower (`nickfedor/watchtower:1.19.0`, fork maintenu de containrrr/watchtower) en mode API HTTP seulement (`WATCHTOWER_HTTP_API_UPDATE=true`, aucun contrôle périodique), avec un jeton, sans port publié, limité aux conteneurs portant le label `com.centurylinklabs.watchtower.enable=true`. StundTransfer l'appelle (`STUNDTRANSFER_UPDATER_URL=http://stundtransfer-updater:8080/v1/update`, `STUNDTRANSFER_UPDATER_TOKEN`) quand on clique ; Watchtower télécharge l'image et remplace le conteneur. Sans ces variables, le bouton dépose un fichier pour la tâche DSM ci-dessous.
+
 **Bouton « Mettre à jour »** (Administration → Mettre à jour) : la page compare la version installée (`STUNDTRANSFER_VERSION`, commit inscrit dans l'image par le workflow) avec la dernière image publiée sur GitHub (publiée seulement si les tests passent). Le bouton dépose `data/update-requested` ; une tâche DSM lancée **chaque minute en root** le voit, télécharge l'image et relance le projet (le conteneur n'a jamais accès à Docker). Le conteneur copie la base dans `data/backups-auto/` à chaque démarrage (10 dernières copies). Le résultat est écrit dans `update.log` (copie lisible par la page dans `data/update.log`).
 
 Tâche à créer une fois : Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur ; utilisateur **root** ; tous les jours, **toutes les minutes** ; script :

@@ -1,10 +1,12 @@
 // StundTransfer: "Mettre à jour" page. The image knows its commit
 // (STUNDTRANSFER_VERSION, set by the GitHub workflow); the newest image that
-// passed the tests is read from GitHub. The button only drops a request file
-// in the data folder: a DSM scheduled task (run as root, outside the
-// container) sees it, pulls the new image and restarts the project. The
-// container never gets any control over Docker.
-import { Injectable, Logger } from "@nestjs/common";
+// passed the tests is read from GitHub. The container never gets any control
+// over Docker; the button asks something outside it to install the image:
+// - STUNDTRANSFER_UPDATER_URL set: an updater container (Watchtower in HTTP
+//   API mode, reachable only on the Docker network, with a token) does it at
+//   once, nothing runs in a loop;
+// - otherwise: a request file in the data folder, for a DSM scheduled task.
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { User } from "@prisma/client";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -20,6 +22,16 @@ const FRESH_MIN_MS = 15 * 1000;
 // Read by the DSM task (it deletes it, then writes the result in update.log)
 const REQUEST_FILE = path.join(DATA_DIRECTORY, "update-requested");
 const LOG_FILE = path.join(DATA_DIRECTORY, "update.log");
+// With an updater: which version asked, to write the result after the restart
+const PENDING_FILE = path.join(DATA_DIRECTORY, "update-pending.json");
+const UPDATER_URL = (process.env.STUNDTRANSFER_UPDATER_URL ?? "").trim();
+const UPDATER_TOKEN = (process.env.STUNDTRANSFER_UPDATER_TOKEN ?? "").trim();
+// Still the same version this long after asking: nothing new was installed
+const PENDING_GIVE_UP_MS = 10 * 60 * 1000;
+
+// Local time of the NAS owner (the container clock is UTC)
+const stamp = () =>
+  new Date().toLocaleString("sv-SE", { timeZone: process.env.TZ || "Europe/Paris" }).slice(0, 16);
 
 const CURRENT = (process.env.STUNDTRANSFER_VERSION ?? "").trim() || null;
 const BUILT_AT = (process.env.STUNDTRANSFER_BUILT_AT ?? "").trim() || null;
@@ -27,7 +39,7 @@ const BUILT_AT = (process.env.STUNDTRANSFER_BUILT_AT ?? "").trim() || null;
 type Version = { sha: string; date: string | null };
 
 @Injectable()
-export class UpdateService {
+export class UpdateService implements OnModuleInit {
   private readonly logger = new Logger("StundTransfer");
   private cache?: { at: number; latest: Version | null; error: boolean };
 
@@ -60,10 +72,35 @@ export class UpdateService {
     return this.cache;
   }
 
+  private async log(line: string) {
+    await fs.appendFile(LOG_FILE, `${stamp()} ${line}\n`).catch(() => undefined);
+  }
+
+  /** After a restart asked through the updater: writes down what happened. */
+  private async settlePending(giveUpOnly: boolean) {
+    const pending = await fs
+      .readFile(PENDING_FILE, "utf8")
+      .then((text) => JSON.parse(text) as { from: string | null; at: string })
+      .catch(() => null);
+    if (!pending) return;
+    if (pending.from !== CURRENT) {
+      if (giveUpOnly) return;
+      await this.log(`mise a jour installee (${CURRENT?.slice(0, 7) ?? "?"})`);
+    } else if (Date.now() - Date.parse(pending.at) > PENDING_GIVE_UP_MS) {
+      await this.log("aucune nouvelle version installee");
+    } else return;
+    await fs.rm(PENDING_FILE, { force: true });
+  }
+
+  async onModuleInit() {
+    await this.settlePending(false);
+  }
+
   async status(fresh = false) {
+    await this.settlePending(true);
     const { latest, error } = await this.latest(fresh);
     const requestedAt = await fs
-      .stat(REQUEST_FILE)
+      .stat(UPDATER_URL ? PENDING_FILE : REQUEST_FILE)
       .then((stats) => stats.mtime.toISOString())
       .catch(() => null);
     const lastLog = await fs
@@ -82,8 +119,26 @@ export class UpdateService {
   }
 
   async request(user: User) {
-    await fs.writeFile(REQUEST_FILE, `${new Date().toISOString()} ${user.username}\n`);
     this.logger.log(`Update requested by ${user.username}`);
+    if (!UPDATER_URL) {
+      await fs.writeFile(REQUEST_FILE, `${new Date().toISOString()} ${user.username}\n`);
+      return this.status();
+    }
+    await fs.writeFile(
+      PENDING_FILE,
+      JSON.stringify({ from: CURRENT, at: new Date().toISOString(), by: user.username }),
+    );
+    // The updater stops this container to replace it: its answer may never come
+    fetch(UPDATER_URL, {
+      headers: { Authorization: `Bearer ${UPDATER_TOKEN}` },
+      signal: AbortSignal.timeout(15 * 60 * 1000),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`answered ${response.status}`);
+      })
+      .catch((e) => {
+        if (e?.name !== "AbortError") this.logger.warn(`Updater: ${e?.message ?? e}`);
+      });
     return this.status();
   }
 }
