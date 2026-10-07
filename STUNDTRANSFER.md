@@ -114,6 +114,8 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 
 ## Mettre à jour le NAS avec la dernière image StundTransfer
 
+**Automatique** : une tâche du Planificateur de tâches DSM (utilisateur root) lance `docker compose pull` puis relance le projet seulement si une nouvelle image est arrivée (voir le script donné à l'installation). L'image n'est publiée que si les tests passent, et le conteneur copie la base dans `data/backups-auto/` à chaque démarrage (10 dernières copies). **À la main** :
+
 1. Vérifie que le build GitHub est vert : https://github.com/StundZow/StundTransfer/actions
 2. Container Manager → **Projet** → `pingvin` → **Arrêter**, puis **Nettoyer**.
 3. Container Manager → **Image** → `ghcr.io/stundzow/stundtransfer` → **Supprimer** (force le re-téléchargement).
@@ -174,6 +176,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/src/reverseShare/reverseShare.controller.ts` | Seuls les admins créent des liens de dépôt |
 | `backend/src/main.ts` | `TRUST_PROXY=true` ne fait confiance qu'aux relais locaux (DSM, Caddy), pour que les limites anti-abus ne se contournent pas ; délai d'envoi d'une requête porté à 2 h (connexions lentes) ; taille max des morceaux jamais réduite pendant que le serveur tourne |
 | `frontend/src/pages/auth/signIn.tsx`, `frontend/src/utils/router.util.ts` | Redirection après connexion limitée aux pages du site (faille `?redirect=javascript:` de Pingvin) |
+| `scripts/docker/entrypoint.sh` | Copie de la base dans `data/backups-auto/` à chaque démarrage, avant les migrations (10 gardées) |
 | `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
 
 En cas de conflit lors d'une mise à jour : garder la version officielle du fichier, puis réappliquer ces quelques lignes.
