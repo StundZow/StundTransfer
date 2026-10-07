@@ -256,9 +256,6 @@ const DownloadCard = ({ token, link }: { token: string; link: NasPublicLink }) =
         >
           {t(link.folder ? "stundtransfer.nas.page.download-all" : "stundtransfer.nas.download")}
         </Button>
-        <Text size="xs" color="dimmed" align="center" maw="32rem">
-          {t(link.folder ? "stundtransfer.nas.page.zip-help" : "stundtransfer.nas.page.resume")}
-        </Text>
       </Stack>
       {link.folder && <FolderContent token={token} rootName={link.name} />}
     </Paper>
