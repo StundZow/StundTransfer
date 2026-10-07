@@ -196,7 +196,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/package.json` | Script `test:stundtransfer` |
 | `frontend/src/pages/upload/[reverseShareToken].tsx` | Affiche la page de dépôt pour les liens de dépôt |
 | `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins ; `/d/*` (liens vers le NAS) public |
-| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; connecté sans partage classique : « Dépôts reçus » + profil ; admins : bouton gris « Partager depuis le NAS » juste à droite (`stundtransfer/NasShareButton.tsx`) |
+| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; connecté sans partage classique : « Dépôts reçus » + profil ; admins : bouton « Partager depuis le NAS » (couleur du site) juste à droite (`stundtransfer/NasShareButton.tsx`) |
 | `frontend/src/components/header/NavbarShareMenu.tsx` | Entrée « Dépôts reçus » |
 | `frontend/src/components/footer/Footer.tsx` | « Powered by » traduit |
 | `frontend/src/pages/account/reverseShares.tsx` | Bouton « Dépôts reçus » |

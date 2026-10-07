@@ -1,4 +1,4 @@
-// StundTransfer: header button of admins (grey, right of "Dépôts reçus") to
+// StundTransfer: header button of admins (site color, right of "Dépôts reçus") to
 // share files and folders already on the NAS.
 import { Button } from "@mantine/core";
 import Link from "next/link";
@@ -12,8 +12,6 @@ const NasShareButton = () => {
       component={Link}
       href="/admin/nas"
       size="xs"
-      variant="light"
-      color="gray"
       leftIcon={<TbShare size="1rem" />}
     >
       {t("stundtransfer.nas.title")}
