@@ -212,9 +212,19 @@ export class ChunkStore {
       if (e?.code !== "ENOENT") throw e;
       if (this.removed.has(depositId)) throw new DepositRemovedError();
       await fs.mkdir(this.depositDir(depositId), { recursive: true });
-      // O_CREAT without O_TRUNC: parallel chunks never erase each other
-      handle = await fs.open(file, fsConstants.O_WRONLY | fsConstants.O_CREAT, 0o644);
-      created = true;
+      // O_EXCL: only the chunk that really creates it says so (parallel chunks
+      // race here); never O_TRUNC, so they never erase each other
+      try {
+        handle = await fs.open(
+          file,
+          fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL,
+          0o644,
+        );
+        created = true;
+      } catch (e) {
+        if (e?.code !== "EEXIST") throw e;
+        handle = await fs.open(file, fsConstants.O_WRONLY);
+      }
       if (this.removed.has(depositId)) {
         // Removed meanwhile: what was just created goes too
         await handle.close();
@@ -225,9 +235,12 @@ export class ChunkStore {
     let ino: bigint;
     try {
       ({ ino } = await handle.stat({ bigint: true }));
-      if (state.ino !== ino) {
+      // Created again: the chunks recorded before are lost, even if Linux gave
+      // the new file the same inode number as the deleted one
+      const recreated = created && (state.ino !== undefined || state.received.size > 0);
+      if (state.ino !== ino || recreated) {
         // After a restart the log is trusted if its .part file is still there
-        const stale = state.ino !== undefined || (created && state.received.size > 0);
+        const stale = recreated || state.ino !== undefined;
         // Set first: chunks still being written to the old file are not recorded
         state.ino = ino;
         if (stale) this.forgetChunks(depositId, fileId, state);
