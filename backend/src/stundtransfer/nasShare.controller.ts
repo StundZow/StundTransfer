@@ -116,21 +116,18 @@ export class NasShareController {
     @Query("path") path: string | undefined,
     @Res() response: Response,
   ) {
-    const { name, archive } = await this.nasShare.openZip(token, path);
+    const { name, zip } = await this.nasShare.openZip(token, path);
     response.status(200).set({
       "Content-Type": "application/zip",
+      // Known in advance: the browser shows the total and the time left
+      "Content-Length": String(zip.size),
       "Content-Disposition": contentDisposition(name),
       "Cache-Control": "private, no-store",
       ...NO_PROXY_BUFFERING,
     });
-    archive.on("error", (e) => {
+    zip.writeTo(response).catch((e) => {
       this.logger.warn(`NAS zip of link ${token.slice(0, 6)}…: ${e.message}`);
       response.destroy(e);
     });
-    // Download cancelled: stop reading the disk
-    response.on("close", () => {
-      if (!response.writableFinished) archive.abort();
-    });
-    archive.pipe(response);
   }
 }

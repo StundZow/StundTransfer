@@ -1,5 +1,5 @@
 // StundTransfer: HTTP API of the "Mettre à jour" page (admins only).
-import { Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { User } from "@prisma/client";
 import { GetUser } from "src/auth/decorator/getUser.decorator";
 import { AdministratorGuard } from "src/auth/guard/isAdmin.guard";
@@ -12,8 +12,8 @@ export class UpdateController {
   constructor(private update: UpdateService) {}
 
   @Get()
-  status() {
-    return this.update.status();
+  status(@Query("fresh") fresh?: string) {
+    return this.update.status(!!fresh);
   }
 
   @Post()

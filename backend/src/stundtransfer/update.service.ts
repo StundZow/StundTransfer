@@ -15,6 +15,8 @@ const BRANCH = process.env.STUNDTRANSFER_BRANCH || "stundtransfer";
 const WORKFLOW = "stundtransfer-image.yml";
 // GitHub allows 60 anonymous calls per hour: one every few minutes is plenty
 const CACHE_MS = 3 * 60 * 1000;
+// "Vérifier" asks again at once, but not more than this often
+const FRESH_MIN_MS = 15 * 1000;
 // Read by the DSM task (it deletes it, then writes the result in update.log)
 const REQUEST_FILE = path.join(DATA_DIRECTORY, "update-requested");
 const LOG_FILE = path.join(DATA_DIRECTORY, "update.log");
@@ -30,8 +32,9 @@ export class UpdateService {
   private cache?: { at: number; latest: Version | null; error: boolean };
 
   /** Newest image published by the workflow (only after the tests passed). */
-  private async latest() {
-    if (this.cache && Date.now() - this.cache.at < CACHE_MS) return this.cache;
+  private async latest(fresh = false) {
+    const age = this.cache ? Date.now() - this.cache.at : Infinity;
+    if (age < (fresh ? FRESH_MIN_MS : CACHE_MS)) return this.cache;
     try {
       const response = await fetch(
         `https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?branch=${BRANCH}&status=success&per_page=1`,
@@ -57,8 +60,8 @@ export class UpdateService {
     return this.cache;
   }
 
-  async status() {
-    const { latest, error } = await this.latest();
+  async status(fresh = false) {
+    const { latest, error } = await this.latest(fresh);
     const requestedAt = await fs
       .stat(REQUEST_FILE)
       .then((stats) => stats.mtime.toISOString())

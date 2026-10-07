@@ -262,8 +262,8 @@ export type UpdateStatus = {
   checkFailed: boolean;
 };
 
-const getUpdateStatus = async (): Promise<UpdateStatus> =>
-  (await api.get("stundtransfer/admin/update")).data;
+const getUpdateStatus = async (fresh = false): Promise<UpdateStatus> =>
+  (await api.get("stundtransfer/admin/update", { params: fresh ? { fresh: 1 } : {} })).data;
 
 const requestUpdate = async (): Promise<UpdateStatus> =>
   (await api.post("stundtransfer/admin/update")).data;

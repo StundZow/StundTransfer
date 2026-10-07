@@ -5,7 +5,6 @@
 // browsed, its files downloaded one by one, or all at once as a zip.
 import { HttpStatus, Injectable, Logger } from "@nestjs/common";
 import { StundNasLink, User } from "@prisma/client";
-import * as archiver from "archiver";
 import * as crypto from "crypto";
 import { createReadStream } from "fs";
 import * as fs from "fs/promises";
@@ -14,6 +13,7 @@ import { PrismaService } from "src/prisma/prisma.service";
 import { stundError } from "./deposit.service";
 import { assertRealPathInside, relativeParts, resolveInside } from "./paths";
 import { STUND_ROOT_DIR, isStundTransferEnabled } from "./stundtransfer.config";
+import { ZipEntry, zipOf } from "./zipStream";
 
 // Entries shown per folder
 const MAX_LISTED = 2000;
@@ -303,28 +303,30 @@ export class NasShareService {
     };
   }
 
-  /** A folder of a link as a zip, written while it is sent (no compression: rushes are already compressed). */
+  /**
+   * A folder of a link as a zip, written while it is sent but with its exact
+   * size known in advance (the browser shows a normal progress bar).
+   */
   async openZip(token: string, relative?: string) {
     const { link, inner, name } = await this.inside(token, relative);
     if (!inner.stats.isDirectory()) throw notFound();
     const folderName = inner.parts.length ? inner.parts[inner.parts.length - 1] : name;
-    const archive = archiver("zip", { store: true });
-    const addFolder = async (absolute: string, prefix: string) => {
+    const entries: ZipEntry[] = [];
+    // Symbolic links are neither files nor folders here: never followed
+    const collect = async (absolute: string, prefix: string) => {
       for (const entry of await fs.readdir(absolute, { withFileTypes: true })) {
         if (isHidden(entry.name)) continue;
         const child = path.join(absolute, entry.name);
-        if (entry.isDirectory()) await addFolder(child, `${prefix}${entry.name}/`);
-        else if (entry.isFile()) archive.file(child, { name: `${prefix}${entry.name}` });
+        if (entry.isDirectory()) await collect(child, `${prefix}${entry.name}/`);
+        else if (entry.isFile()) {
+          const stats = await fs.stat(child);
+          entries.push({ name: `${prefix}${entry.name}`, path: child, size: stats.size, mtime: stats.mtime });
+        }
       }
     };
+    await collect(inner.absolute, `${folderName}/`);
     // Not awaited: the counter must not delay the start of the zip
     void this.countDownload(link);
-    addFolder(inner.absolute, `${folderName}/`)
-      .then(() => archive.finalize())
-      .catch((e) => {
-        this.logger.warn(`NAS zip of link ${token.slice(0, 6)}…: ${e?.message ?? e}`);
-        archive.abort();
-      });
-    return { name: `${folderName}.zip`, archive };
+    return { name: `${folderName}.zip`, zip: zipOf(entries) };
   }
 }

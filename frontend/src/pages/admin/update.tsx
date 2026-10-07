@@ -22,8 +22,19 @@ const UpdatePage = () => {
   const [phase, setPhase] = useState<"idle" | "waiting" | "done" | "timeout">("idle");
   const target = useRef<string>();
 
+  const [checking, setChecking] = useState(false);
+  // Asks GitHub again now (otherwise the server checks at most every few minutes)
+  const check = (fresh: boolean) => {
+    setChecking(true);
+    return stundTransferService
+      .getUpdateStatus(fresh)
+      .then(setStatus)
+      .catch(toast.axiosError)
+      .finally(() => setChecking(false));
+  };
+
   useEffect(() => {
-    stundTransferService.getUpdateStatus().then(setStatus).catch(toast.axiosError);
+    check(false);
   }, []);
 
   // After the click: the server restarts in between, so errors are expected
@@ -69,7 +80,7 @@ const UpdatePage = () => {
       </Title>
       <Paper withBorder radius="md" p="xl" maw="40rem">
         <Stack spacing="md">
-          <Group>
+          <Group position="apart">
             {!status.current ? (
               <Badge color="gray" size="lg" sx={{ textTransform: "none" }}>
                 {t("stundtransfer.update.unknown")}
@@ -83,6 +94,16 @@ const UpdatePage = () => {
                 {t("stundtransfer.update.up-to-date")}
               </Badge>
             )}
+            <Button
+              size="xs"
+              variant="light"
+              leftIcon={<TbRefresh />}
+              loading={checking}
+              disabled={phase === "waiting"}
+              onClick={() => check(true)}
+            >
+              {t("stundtransfer.update.check")}
+            </Button>
           </Group>
           <Stack spacing={4}>
             <Text>{t("stundtransfer.update.installed", { version: version(status.current) })}</Text>

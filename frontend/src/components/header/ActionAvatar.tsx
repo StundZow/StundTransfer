@@ -1,6 +1,6 @@
 import { ActionIcon, Avatar, Menu } from "@mantine/core";
 import Link from "next/link";
-import { TbDoorExit, TbSettings, TbUser, TbUserCircle } from "react-icons/tb";
+import { TbDoorExit, TbSettings, TbShare, TbUser, TbUserCircle } from "react-icons/tb"; // StundTransfer: TbShare
 import useUser from "../../hooks/user.hook";
 import authService from "../../services/auth.service";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -33,6 +33,12 @@ const ActionAvatar = () => {
             icon={<TbSettings size={14} />}
           >
             <FormattedMessage id="navbar.avatar.admin" />
+          </Menu.Item>
+        )}
+        {/* StundTransfer: links to files and folders already on the NAS */}
+        {user!.isAdmin && (
+          <Menu.Item component={Link} href="/admin/nas" icon={<TbShare size={14} />}>
+            <FormattedMessage id="stundtransfer.nas.title" />
           </Menu.Item>
         )}
 
