@@ -22,6 +22,49 @@ const TOKEN_REGEX = /^[A-Za-z0-9_-]{16,64}$/;
 const READ_BLOCK_BYTES = 1024 * 1024;
 // Hidden files and DSM folders (#recycle, @eaDir) are never shown nor sent
 const isHidden = (name: string) => /^[.@#]/.test(name);
+// Folder sizes of the download page come from walking the tree: a giant tree
+// stops early (the size shown is then a lower bound)
+const MAX_WALKED = 20_000;
+
+/** Total size and number of files of a folder, sub-folders included. */
+async function folderTotals(absolute: string, budget = { left: MAX_WALKED }) {
+  let size = 0;
+  let files = 0;
+  let complete = true;
+  const walk = async (dir: string) => {
+    let entries: import("fs").Dirent[];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const folders: string[] = [];
+    const sizes: Promise<void>[] = [];
+    for (const entry of entries) {
+      if (isHidden(entry.name)) continue;
+      if (budget.left-- <= 0) {
+        complete = false;
+        break;
+      }
+      const child = path.join(dir, entry.name);
+      if (entry.isDirectory()) folders.push(child);
+      else if (entry.isFile())
+        sizes.push(
+          fs.stat(child).then(
+            (stats) => {
+              size += stats.size;
+              files++;
+            },
+            () => undefined,
+          ),
+        );
+    }
+    await Promise.all(sizes);
+    for (const folder of folders) if (complete) await walk(folder);
+  };
+  await walk(absolute);
+  return { size, files, complete };
+}
 
 const notFound = () =>
   stundError(HttpStatus.NOT_FOUND, "stund_link_invalid", "This link does not exist or has expired");
@@ -184,19 +227,38 @@ export class NasShareService {
   }
 
   async getPublic(token: string) {
-    const { name, stats, link } = await this.linked(token);
+    const { name, stats, link, absolute } = await this.linked(token);
+    const totals = stats.isDirectory()
+      ? await folderTotals(absolute)
+      : { size: stats.size, files: 1, complete: true };
     return {
       name,
       folder: stats.isDirectory(),
-      size: stats.isFile() ? stats.size : null,
+      size: totals.size,
+      fileCount: totals.files,
+      // false: a giant folder, the size and count are lower bounds
+      complete: totals.complete,
       expiresAt: link.expiresAt,
     };
   }
 
+  /** Content of a folder link (or of one of its sub-folders), with folder sizes. */
   async listPublic(token: string, relative?: string) {
     const { inner } = await this.inside(token, relative);
     if (!inner.stats.isDirectory()) throw notFound();
-    return { path: inner.parts.join("/"), ...(await this.listFolder(inner.absolute)) };
+    const { folders, files } = await this.listFolder(inner.absolute);
+    const budget = { left: MAX_WALKED };
+    const sized: { name: string; size: number; files: number; complete: boolean }[] = [];
+    for (const folder of folders)
+      sized.push({
+        name: folder.name,
+        ...(await folderTotals(path.join(inner.absolute, folder.name), budget)),
+      });
+    return {
+      path: inner.parts.join("/"),
+      folders: sized,
+      files: files.map(({ name, size }) => ({ name, size })),
+    };
   }
 
   private async countDownload(link: StundNasLink) {

@@ -217,8 +217,18 @@ export type NasLink = {
 export type NasPublicLink = {
   name: string;
   folder: boolean;
-  size: number | null;
+  // Folder: total of its files (sub-folders included)
+  size: number;
+  fileCount: number;
+  // false: giant folder, size and count are lower bounds
+  complete: boolean;
   expiresAt: string | null;
+};
+
+export type NasPublicListing = {
+  path: string;
+  folders: { name: string; size: number; files: number; complete: boolean }[];
+  files: { name: string; size: number }[];
 };
 
 const listNas = async (path: string): Promise<NasListing> =>
@@ -235,7 +245,7 @@ const deleteNasLink = async (id: string) => api.delete(`stundtransfer/admin/nas-
 const getNasLink = async (token: string): Promise<NasPublicLink> =>
   (await api.get(`stundtransfer/nas/${token}`, { timeout: INFO_TIMEOUT_MS })).data;
 
-const listNasPublic = async (token: string, path: string): Promise<NasListing> =>
+const listNasPublic = async (token: string, path: string): Promise<NasPublicListing> =>
   (await api.get(`stundtransfer/nas/${token}/list`, { params: { path } })).data;
 
 const withPath = (path?: string) => (path ? `?path=${encodeURIComponent(path)}` : "");
