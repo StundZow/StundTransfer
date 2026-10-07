@@ -10,6 +10,7 @@ import { Readable } from "stream";
 import {
   ChunkLengthError,
   ChunkStore,
+  StagingFileChangedError,
   expectedChunkLength,
   totalChunks,
 } from "../../src/stundtransfer/chunkStore";
@@ -142,5 +143,93 @@ describe("ChunkStore", () => {
     await store.removeDeposit("dep");
     await new Promise((resolve) => setTimeout(resolve, 200));
     await assert.rejects(fs.access(store.depositDir("dep")));
+  });
+
+  it("recreates a staging folder deleted during the upload and forgets the lost chunks", async () => {
+    const store = new ChunkStore(root, 60000);
+    await store.prepareDeposit("dep");
+    const data = randomBytes(4500);
+    await writeAll(store, data, [0, 1, 2]);
+    await store.flush("dep", "file");
+    await fs.rm(store.depositDir("dep"), { recursive: true });
+
+    await writeAll(store, data, [3, 4]);
+    assert.deepEqual([...(await store.receivedChunks("dep", "file"))].sort(), [3, 4]);
+    // The lost chunks are sent again: the file is complete, without zeros
+    await writeAll(store, data, [0, 1, 2]);
+    assert.deepEqual(await fs.readFile(store.dataPath("dep", "file")), data);
+    assert.equal((await new ChunkStore(root).receivedChunks("dep", "file")).size, 5);
+  });
+
+  it("never counts chunks of a .part deleted behind its back (no zeros in the file)", async () => {
+    const store = new ChunkStore(root, 60000);
+    await store.prepareDeposit("dep");
+    const data = randomBytes(4500);
+    await writeAll(store, data, [0, 1]);
+    await fs.rm(store.dataPath("dep", "file"));
+    // In parallel, like browsers do: none of the new chunks is forgotten
+    await Promise.all([2, 3, 4].map((index) => writeAll(store, data, [index])));
+    assert.deepEqual([...(await store.receivedChunks("dep", "file"))].sort(), [2, 3, 4]);
+    store.forgetDeposit("dep");
+  });
+
+  it("after a restart, trusts the log only if the .part is still there", async () => {
+    const data = randomBytes(4500);
+    const store = new ChunkStore(root, 60000);
+    await store.prepareDeposit("dep");
+    await writeAll(store, data, [0, 1]);
+    await store.flush("dep", "file");
+    store.forgetDeposit("dep");
+
+    const kept = new ChunkStore(root, 60000);
+    await writeAll(kept, data, [2]);
+    assert.deepEqual([...(await kept.receivedChunks("dep", "file"))].sort(), [0, 1, 2]);
+    await kept.flush("dep", "file");
+    kept.forgetDeposit("dep");
+
+    await fs.rm(kept.dataPath("dep", "file"));
+    const lost = new ChunkStore(root, 60000);
+    await writeAll(lost, data, [3]);
+    assert.deepEqual([...(await lost.receivedChunks("dep", "file"))], [3]);
+    lost.forgetDeposit("dep");
+  });
+
+  it("does not record a chunk written to a .part replaced meanwhile", async () => {
+    const store = new ChunkStore(root, 60000);
+    await store.prepareDeposit("dep");
+    const data = randomBytes(4500);
+    let release: () => void;
+    const paused = new Promise<void>((resolve) => (release = resolve));
+    async function* slow() {
+      yield data.subarray(0, 500);
+      await paused;
+      yield data.subarray(500, 1000);
+    }
+    const slowWrite = store.writeChunk("dep", "file", 0, 0, slow(), 5, 1000);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Deleted by hand while chunk 0 is being received, then chunk 1 arrives
+    await fs.rm(store.dataPath("dep", "file"));
+    await writeAll(store, data, [1]);
+    release();
+    await assert.rejects(slowWrite, StagingFileChangedError);
+    assert.deepEqual([...(await store.receivedChunks("dep", "file"))], [1]);
+    store.forgetDeposit("dep");
+  });
+
+  it("checks the staged size and resets a file whose data was lost", async () => {
+    const store = new ChunkStore(root, 60000);
+    await store.prepareDeposit("dep");
+    const data = randomBytes(4500);
+    await writeAll(store, data, [0, 1, 2, 3, 4]);
+    assert.equal(await store.isStaged("dep", "file", 4500), true);
+    assert.equal(await store.isStaged("dep", "file", 4501), false);
+    assert.equal(await store.isStaged("dep", "other", 0), false);
+
+    await store.resetFile("dep", "file");
+    assert.equal(await store.isStaged("dep", "file", 4500), false);
+    assert.equal((await store.receivedChunks("dep", "file")).size, 0);
+    assert.equal((await new ChunkStore(root).receivedChunks("dep", "file")).size, 0);
+    await writeAll(store, data, [4, 3, 2, 1, 0]);
+    assert.deepEqual(await fs.readFile(store.dataPath("dep", "file")), data);
   });
 });

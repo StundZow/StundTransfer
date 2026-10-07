@@ -6,10 +6,12 @@ import SignInForm from "../../components/auth/SignInForm";
 import Meta from "../../components/Meta";
 import useUser from "../../hooks/user.hook";
 import useTranslate from "../../hooks/useTranslate.hook";
+import { getQueryString, safeRedirectPath } from "../../utils/router.util"; // StundTransfer
 
 export function getServerSideProps(context: GetServerSidePropsContext) {
   return {
-    props: { redirectPath: context.query.redirect ?? null },
+    // StundTransfer: a single string ("?redirect=a&redirect=b" gives an array)
+    props: { redirectPath: getQueryString(context.query.redirect) ?? null },
   };
 }
 
@@ -25,7 +27,8 @@ const SignIn = ({ redirectPath }: { redirectPath?: string }) => {
   useEffect(() => {
     refreshUser().then((user) => {
       if (user) {
-        router.replace(redirectPath ?? "/upload");
+        // StundTransfer: never "javascript:..." or another site (XSS, open redirect)
+        router.replace(safeRedirectPath(redirectPath ?? "/upload"));
       } else {
         setIsLoading(false);
       }

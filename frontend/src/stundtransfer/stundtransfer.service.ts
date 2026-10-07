@@ -29,7 +29,8 @@ export type DepositFileState = {
 
 export type DepositState = {
   depositId: string;
-  status: "UPLOADING" | "RECEIVED";
+  // CANCELLED: by the uploader, an administrator or for inactivity
+  status: "UPLOADING" | "RECEIVED" | "CANCELLED";
   uploaderName: string;
   videoName: string;
   fileCount: number;
@@ -63,12 +64,20 @@ export type AdminDeposit = {
   }[];
 };
 
+// A request left hanging (a proxy keeping the connection open) fails after
+// this long, so the page tries again and says it cannot connect
+const INFO_TIMEOUT_MS = 15 * 1000;
+
 /** Public deposit of the home page (no link needed), if an admin enabled it. */
 const getPublicInfo = async (): Promise<LinkInfo> =>
-  (await api.get("stundtransfer/public")).data;
+  (await api.get("stundtransfer/public", { timeout: INFO_TIMEOUT_MS })).data;
 
 const getLink = async (token: string): Promise<LinkInfo> =>
-  (await api.get(`stundtransfer/links/${encodeURIComponent(token)}`)).data;
+  (
+    await api.get(`stundtransfer/links/${encodeURIComponent(token)}`, {
+      timeout: INFO_TIMEOUT_MS,
+    })
+  ).data;
 
 const createDeposit = async (body: {
   // Deposit link token; undefined for the public deposit
@@ -110,6 +119,9 @@ const uploadChunk = async (
   options: {
     signal: AbortSignal;
     onUploadProgress: (event: AxiosProgressEvent) => void;
+    // Streamed by the server instead of read by its body parser, whose size
+    // limit can be below this deposit's chunk size (setting lowered since)
+    streamed?: boolean;
   },
 ): Promise<{ fileComplete: boolean }> =>
   (
@@ -119,9 +131,10 @@ const uploadChunk = async (
       {
         headers: {
           [SECRET_HEADER]: session.secret,
-          // Measured faster on the NAS than "application/x-stundtransfer-chunk"
-          // (streamed), which the server also accepts
-          "Content-Type": "application/octet-stream",
+          // octet-stream: measured faster on the NAS than the streamed type
+          "Content-Type": options.streamed
+            ? "application/x-stundtransfer-chunk"
+            : "application/octet-stream",
         },
         signal: options.signal,
         onUploadProgress: options.onUploadProgress,

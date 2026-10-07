@@ -13,7 +13,7 @@ Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé 
 | Visiteur | l'adresse publique, ex. `https://<ton-nom>.synology.me/` | La page de dépôt directement (si **Dépôt public** est activé), une icône « personne » en haut à droite pour se connecter |
 | Visiteur | lien de dépôt `…/upload/<jeton>` | La page de dépôt de ce lien |
 | Admin (connecté) | **Administration → Dépôts reçus** (ou menu liens) | **Tous** les dépôts : qui, quelle vidéo, quand, nombre de fichiers, taille, statut, détail fichier par fichier, « Réessayer le rangement » en cas d'erreur |
-| Admin (connecté) | **Administration → Paramètres** | Tous les réglages : section **StundTransfer**, nom de l'appli et logo (Général), couleurs (Apparence), etc. |
+| Admin (connecté) | **Administration → Paramètres** | Tous les réglages : section **StundTransfer**, nom de l'appli (Général), logo et couleurs (Apparence), inscriptions (Sécurité & Accès), etc. |
 
 - Le **dépôt public** (accueil) ne demande aucun lien. Les **liens de dépôt** (« partages inversés » de Pingvin) restent possibles en plus, par exemple pour une personne précise avec une expiration, une taille max et un nombre d'utilisations max.
 - L'envoi se fait par morceaux (Paramètres → Partage → taille des morceaux, 20 Mo), plusieurs en parallèle, avec reprise automatique en cas de coupure et reprise après rafraîchissement de la page (il suffit de redéposer les mêmes fichiers).
@@ -33,12 +33,16 @@ Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé 
 | Dépôt public | désactivé | L'accueil accepte les dépôts sans compte ni lien |
 | Taille maximale par dépôt | 500 Go | Pour le dépôt public (les liens de dépôt gardent leur propre limite) |
 | Morceaux envoyés en même temps | 6 | Par navigateur (1 à 16) |
-| Espace à garder libre | 20 Go | Refuse un dépôt qui laisserait moins d'espace libre |
-| Supprimer les envois inachevés après | 3 jours | Nettoyage du dossier « en cours » |
+| Espace à garder libre | 20 Go | Refuse un dépôt si l'espace libre, moins ce qui est déjà promis aux envois en cours, passerait sous cette marge ; vérifié aussi pendant l'envoi |
+| Supprimer les envois inachevés après | 3 jours | Nettoyage du dossier « en cours ». Les envois annulés ou abandonnés disparaissent de l'historique après 30 jours |
 | Regrouper les dépôts du même nom | désactivé | Désactivé : un dossier par dépôt |
-| Partage classique | désactivé | Affiche le partage d'origine de Pingvin (Téléverser, Mes partages, Partages inversés). Désactivé : ses pages renvoient vers « Dépôts reçus » (connecté) ou la page de dépôt (visiteur) |
+| Partage classique | désactivé | Affiche le partage d'origine de Pingvin (Téléverser, Mes partages, Partages inversés) dans le menu et l'accueil des admins. Quel que soit ce réglage, ses pages restent réservées aux admins : les visiteurs vont sur la page de dépôt, les autres comptes sur « Dépôts reçus » |
+| Exemple « Qui es-tu ? » | `ex. Stund` | Texte gris dans le champ du nom |
+| Exemple « Pour quelle vidéo ? » | `ex. Beamng` | Texte gris dans le champ de la vidéo |
 
-Le nom affiché en haut et le logo se changent dans **Paramètres → Général**.
+Le nom affiché en haut se change dans **Paramètres → Général**, le logo et les couleurs dans **Paramètres → Apparence**.
+
+La taille des morceaux (**Paramètres → Partage**, 20 Mo sur le NAS) peut se baisser pendant des envois en cours, sans les casser. En revanche, si le conteneur redémarre entre-temps, ces envois devront être recommencés.
 
 **Dans le `compose.yaml`** (liés aux dossiers du NAS, donc pas dans l'interface) :
 
@@ -97,12 +101,13 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 ## Nouvelle installation (autre NAS)
 
 1. Le NAS doit avoir un processeur **Intel/AMD** (Synology « + », ex. DS224+, DS225+, DS423+). Les modèles ARM (DS223, DS220j…) ne sont pas pris en charge.
-2. Crée le compte DSM dédié (voir « Droits Synology ») et le dossier `docker/stundtransfer`.
-3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/...`), `PUID`/`PGID` et `STUNDTRANSFER_ROOT_NAME` à ton NAS. `STUNDTRANSFER_STAGING_DIR` peut être retiré (par défaut : `.stundtransfer-en-cours` à la racine du dossier monté).
+2. Crée le compte DSM dédié (voir « Droits Synology ») et un dossier pour les données de l'appli, ex. `docker/stundtransfer`.
+3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/docker/pingvin` → ton dossier de données, `/volume1/A - STUND - NAS` → ton dossier partagé de rushs), `PUID`/`PGID` et `STUNDTRANSFER_ROOT_NAME` à ton NAS. `STUNDTRANSFER_STAGING_DIR` peut être retiré (par défaut : `.stundtransfer-en-cours` à la racine du dossier monté).
 4. Ouvre `http://<ip-du-nas>:3000/auth/signUp` : **le premier compte créé est administrateur**.
 5. Administration → Paramètres :
    - **Sécurité & Accès** → désactive « Autoriser les inscriptions » (sinon n'importe qui peut se créer un compte) ;
-   - **Général** → nom de l'appli, logo, adresse publique ;
+   - **Général** → nom de l'appli, adresse publique ;
+   - **Apparence** → logo, couleurs ;
    - **StundTransfer** → active « Dépôt public ».
 6. Pour l'accès depuis internet : adresse DDNS + certificat Let's Encrypt + proxy inversé DSM (HTTPS 443 → `localhost:3000`) + redirection du port 443 sur la box. Jamais le port 3000 directement.
 
@@ -114,7 +119,16 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 4. Container Manager → **Projet** → `pingvin` → **Construire**.
 5. Vérifie que le site s'ouvre.
 
-Revenir en arrière : chaque build est aussi publié avec un tag court (ex. `ghcr.io/stundzow/stundtransfer:a1b2c3d`). Mets ce tag à la place de `latest` dans `compose.yaml`, puis reconstruis le projet. Avant une mise à jour qui ajoute une migration de base de données, sauvegarde `data/pingvin-share.db` (conteneur arrêté).
+Avant une mise à jour qui ajoute une migration de base de données, sauvegarde `data/pingvin-share.db` (conteneur arrêté).
+
+**Revenir en arrière** : chaque build est aussi publié avec un tag court (ex. `ghcr.io/stundzow/stundtransfer:a1b2c3d`). Si l'image visée est **plus ancienne que la base** (ex. `b0d9ae7`, la dernière image avant Pingvin 2.0) :
+
+1. Arrête le projet.
+2. Garde une copie de la base actuelle, puis remplace `data/pingvin-share.db` par la sauvegarde d'avant la mise à jour (pour la 2.0, sur ce NAS : `docker/pingvin/backups/pingvin-share-avant-2.0-2026-10-06.db`).
+3. Mets le tag court à la place de `latest` dans `compose.yaml`, puis **Construire**.
+4. Vérifie Administration → Paramètres → « Autoriser les inscriptions » : désactivé.
+
+Sans remettre la sauvegarde, l'ancienne version efface les réglages qu'elle ne connaît pas et **rouvre les inscriptions**, même après être revenu à `latest`. Les dépôts reçus après la mise à jour disparaissent de l'historique, mais leurs fichiers restent sur le NAS. Ne mets jamais l'image officielle `smp46/pingvin-share-x` : elle efface tous les réglages StundTransfer.
 
 ## Récupérer une mise à jour du projet officiel (upstream)
 
@@ -131,12 +145,12 @@ git push origin stundtransfer # déclenche les tests et la construction de l'ima
 Règles :
 - Fusionner uniquement des **tags de version stable** (`vX.Y.Z`), pas `main` (versions bêta).
 - Avant de passer à une nouvelle version **majeure** (ex. 2.0), sauvegarder `data/pingvin-share.db` : les migrations ne se défont pas.
-- Version majeure : relancer `node test/stundtransfer/e2e-deposit.mjs` sur une **copie** de la base du NAS migrée (avec `STUNDTRANSFER_CHUNK_MB=1`), et vérifier les réglages déplacés (en 2.0 : inscriptions, cookies, durée de session… passés dans « Sécurité & Accès »). L'outil `stundtransfer-import-config-yaml.cjs` connaît ces déplacements (table `MOVED`).
+- Version majeure : relancer `node test/stundtransfer/e2e-deposit.mjs` sur une **copie** de la base du NAS migrée (serveur lancé avec `STUNDTRANSFER_CHUNK_MB=1`). La base du NAS n'a pas les liens de test : crée sur la copie deux liens de dépôt (un valide avec au moins 3 utilisations et 20 Mo, un épuisé) et passe leurs jetons avec `TOKEN=…` et `EXHAUSTED_TOKEN=…`. Avec un dossier de réception réglé, `TRANSFER_DIR` = `<dossier monté>/<dossier de réception>` et `STAGING_DIR` = le dossier « en cours ». Vérifier aussi les réglages déplacés (en 2.0 : inscriptions, cookies, durée de session… passés dans « Sécurité & Accès »). L'outil `stundtransfer-import-config-yaml.cjs` connaît ces déplacements (table `MOVED`).
 - Les migrations Prisma de StundTransfer sont **additives uniquement** (ajout de tables/colonnes, jamais de suppression). Si une migration officielle a une date antérieure à la nôtre, `prisma migrate deploy` l'applique quand même : pas d'action à faire.
 
 ### Ce qui est modifié dans le code officiel
 
-Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `frontend/src/stundtransfer/`, `frontend/src/pages/depot.tsx`, `frontend/src/pages/account/deposits.tsx`, tests, workflow). Chaque ligne modifiée dans un fichier officiel est marquée `StundTransfer` :
+Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `frontend/src/stundtransfer/`, `frontend/src/pages/depot.tsx`, `frontend/src/pages/account/deposits.tsx`, `frontend/src/pages/admin/destination.tsx`, `backend/scripts/stundtransfer-import-config-yaml.cjs`, `.github/README.md`, tests, workflow). Chaque ligne modifiée dans un fichier officiel est marquée `StundTransfer` :
 
 | Fichier | Modification |
 |---|---|
@@ -144,8 +158,8 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/src/app.module.ts` | Branche le module `StundTransferModule` |
 | `backend/package.json` | Script `test:stundtransfer` |
 | `frontend/src/pages/upload/[reverseShareToken].tsx` | Affiche la page de dépôt pour les liens de dépôt |
-| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique redirigées quand il est caché |
-| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule ; connecté sans partage classique : « Dépôts reçus » + profil |
+| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins |
+| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; connecté sans partage classique : « Dépôts reçus » + profil |
 | `frontend/src/components/header/NavbarShareMenu.tsx` | Entrée « Dépôts reçus » |
 | `frontend/src/components/footer/Footer.tsx` | « Powered by » traduit |
 | `frontend/src/pages/account/reverseShares.tsx` | Bouton « Dépôts reçus » |
@@ -155,7 +169,11 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `frontend/src/components/admin/configuration/ConfigurationNavBar.tsx` | Entrée « StundTransfer » dans les paramètres |
 | `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
 | `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) |
-| `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage |
+| `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage ; en mode dépôt, un lien de dépôt ne permet jamais de créer un partage classique |
+| `backend/src/reverseShare/reverseShare.controller.ts` | Seuls les admins créent des liens de dépôt |
+| `backend/src/main.ts` | `TRUST_PROXY=true` ne fait confiance qu'aux relais locaux (DSM, Caddy), pour que les limites anti-abus ne se contournent pas ; délai d'envoi d'une requête porté à 2 h (connexions lentes) ; taille max des morceaux jamais réduite pendant que le serveur tourne |
+| `frontend/src/pages/auth/signIn.tsx`, `frontend/src/utils/router.util.ts` | Redirection après connexion limitée aux pages du site (faille `?redirect=javascript:` de Pingvin) |
+| `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
 
 En cas de conflit lors d'une mise à jour : garder la version officielle du fichier, puis réappliquer ces quelques lignes.
 

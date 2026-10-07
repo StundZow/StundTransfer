@@ -6,6 +6,7 @@ const english: Record<string, string> = {
   "stundtransfer.guest.closed.title": "No drop open",
   "stundtransfer.guest.closed.description":
     "There is no open drop right now. If someone sent you a link, open it directly.",
+  "stundtransfer.connecting.retry": "Cannot connect, trying again…",
   "stundtransfer.error.stund_public_disabled":
     "Drops are closed right now. Try again later or ask for a drop link.",
 
@@ -30,10 +31,10 @@ const english: Record<string, string> = {
   "stundtransfer.admin.official-update": "New Pingvin version: ask Claude to merge it",
   "stundtransfer.admin.my-links": "My share links",
   "stundtransfer.admin.theme": "Colors and theme",
-  "admin.config.stundtransfer.uploader-placeholder": 'Example for "Who are you?"',
+  "admin.config.stundtransfer.uploader-placeholder": "Example for “Who are you?”",
   "admin.config.stundtransfer.uploader-placeholder.description":
     "Grey text shown in the empty field. Leave empty for the default text.",
-  "admin.config.stundtransfer.video-placeholder": 'Example for "Which video is it for?"',
+  "admin.config.stundtransfer.video-placeholder": "Example for “Which video is it for?”",
   "admin.config.stundtransfer.video-placeholder.description":
     "Grey text shown in the empty field. Leave empty for the default text.",
   "stundtransfer.destination.title": "Destination folder",
@@ -77,8 +78,11 @@ const english: Record<string, string> = {
   "stundtransfer.files.ignored":
     "{count, plural, one {# system file ignored} other {# system files ignored}} (.DS_Store, Thumbs.db…)",
   "stundtransfer.files.duplicate": "Already added: {name}",
+  "stundtransfer.files.renamed":
+    "{count, plural, one {Another file is already called {name}: this one is added as {newName}.} other {# files have the same name as a file already added: they are added with a number (e.g. {newName}).}}",
   "stundtransfer.files.too-big":
     "Too big: this link accepts {maxSize} at most.",
+  "stundtransfer.files.too-many": "Too many files: {max, number} at most per upload.",
 
   "stundtransfer.button.send": "Send",
 
@@ -115,6 +119,12 @@ const english: Record<string, string> = {
   "stundtransfer.resume.missing": "Still missing: {names}",
   "stundtransfer.resume.button": "Resume upload",
   "stundtransfer.resume.abandon": "Give up and start over",
+  "stundtransfer.resume.extra":
+    "{count, plural, one {{name} is not part of the interrupted upload: it is ignored.} other {# files are not part of the interrupted upload: they are ignored.}}",
+  "stundtransfer.resume.incomplete":
+    "Your previous upload was cut off while it was being prepared, before any file was sent. Drop your files again to start over.",
+  "stundtransfer.resume.cancelled":
+    "Your previous upload was cancelled, it cannot be resumed. Drop your files again to start over.",
 
   "stundtransfer.error.title": "The upload could not continue",
   "stundtransfer.error.retry": "Try again",
@@ -124,15 +134,22 @@ const english: Record<string, string> = {
   "stundtransfer.error.stund_not_enough_space":
     "The server is running out of space. Let the person who sent you the link know.",
   "stundtransfer.error.stund_invalid_names":
-    'Fill in "Who are you?" and "Which video is it for?".',
+    "Fill in “Who are you?” and “Which video is it for?”.",
   "stundtransfer.error.stund_storage_unavailable":
     "The drop server is not available right now. Try again later.",
   "stundtransfer.error.stund_not_uploading":
     "This upload is already finished or was cancelled.",
+  "stundtransfer.error.stund_cancelled": "This upload was cancelled.",
+  "stundtransfer.error.stund_incomplete":
+    "The server did not get all the files. Click “Try again” and drop the same files again to send what is missing.",
+  "stundtransfer.error.stund_bad_chunk":
+    "A part of a file did not arrive correctly (the file may have changed on your disk). Click “Try again” to resume the upload.",
+  "stundtransfer.error.chunk-too-large":
+    "The server refuses file parts this big. Let the person who sent you the link know, then click “Try again” to resume the upload.",
   "stundtransfer.error.file-read":
-    'Cannot read "{name}". The drive or card may have been unplugged. Plug it back in and drop the files again to resume.',
+    "Cannot read “{name}”. The drive or card may have been unplugged. Plug it back in and drop the files again to resume.",
   "stundtransfer.error.unknown":
-    "Something unexpected happened. Reload the page: the upload will resume where it stopped.",
+    "Something unexpected happened. Click “Try again”; if it happens again, let the person who sent you the link know.",
 
   "stundtransfer.admin.title": "Received deposits",
   "stundtransfer.admin.button": "Received deposits",
@@ -171,6 +188,7 @@ const french: Record<string, string> = {
   "stundtransfer.guest.closed.title": "Aucun dépôt ouvert",
   "stundtransfer.guest.closed.description":
     "Il n'y a pas de dépôt ouvert pour le moment. Si on t'a envoyé un lien, ouvre-le directement.",
+  "stundtransfer.connecting.retry": "Connexion impossible, nouvel essai…",
   "stundtransfer.error.stund_public_disabled":
     "Les dépôts sont fermés pour le moment. Réessaie plus tard ou demande un lien de dépôt.",
 
@@ -242,8 +260,11 @@ const french: Record<string, string> = {
   "stundtransfer.files.ignored":
     "{count, plural, one {# fichier système ignoré} other {# fichiers système ignorés}} (.DS_Store, Thumbs.db…)",
   "stundtransfer.files.duplicate": "Déjà ajouté : {name}",
+  "stundtransfer.files.renamed":
+    "{count, plural, one {Un autre fichier s'appelle déjà {name} : celui-ci est ajouté sous le nom {newName}.} other {# fichiers ont le même nom qu'un fichier déjà ajouté : ils sont ajoutés avec un numéro (ex. {newName}).}}",
   "stundtransfer.files.too-big":
     "C'est trop lourd : ce lien accepte {maxSize} au maximum.",
+  "stundtransfer.files.too-many": "Trop de fichiers : {max, number} au maximum par envoi.",
 
   "stundtransfer.button.send": "Envoyer",
 
@@ -280,6 +301,12 @@ const french: Record<string, string> = {
   "stundtransfer.resume.missing": "Il manque encore : {names}",
   "stundtransfer.resume.button": "Reprendre l'envoi",
   "stundtransfer.resume.abandon": "Abandonner et recommencer",
+  "stundtransfer.resume.extra":
+    "{count, plural, one {{name} ne fait pas partie de l'envoi interrompu : il est ignoré.} other {# fichiers ne font pas partie de l'envoi interrompu : ils sont ignorés.}}",
+  "stundtransfer.resume.incomplete":
+    "Ton envoi précédent a été coupé pendant sa préparation, avant l'envoi des fichiers. Redépose tes fichiers pour recommencer.",
+  "stundtransfer.resume.cancelled":
+    "Ton envoi précédent a été annulé, il ne peut pas être repris. Redépose tes fichiers pour recommencer.",
 
   "stundtransfer.error.title": "L'envoi n'a pas pu continuer",
   "stundtransfer.error.retry": "Réessayer",
@@ -294,10 +321,17 @@ const french: Record<string, string> = {
     "Le serveur de dépôt n'est pas disponible pour le moment. Réessaie plus tard.",
   "stundtransfer.error.stund_not_uploading":
     "Cet envoi est déjà terminé ou a été annulé.",
+  "stundtransfer.error.stund_cancelled": "Cet envoi a été annulé.",
+  "stundtransfer.error.stund_incomplete":
+    "Le serveur n'a pas reçu tous les fichiers. Clique sur « Réessayer » et redépose les mêmes fichiers pour envoyer ce qui manque.",
+  "stundtransfer.error.stund_bad_chunk":
+    "Un morceau de fichier n'est pas arrivé correctement (le fichier a peut-être changé sur ton disque). Clique sur « Réessayer » pour reprendre l'envoi.",
+  "stundtransfer.error.chunk-too-large":
+    "Le serveur refuse des morceaux de fichier aussi gros. Préviens la personne qui t'a envoyé le lien, puis clique sur « Réessayer » pour reprendre l'envoi.",
   "stundtransfer.error.file-read":
     "Impossible de lire « {name} ». Le disque ou la carte a peut-être été débranché. Rebranche-le et redépose les fichiers pour reprendre.",
   "stundtransfer.error.unknown":
-    "Une erreur inattendue est survenue. Recharge la page : l'envoi reprendra là où il s'était arrêté.",
+    "Une erreur inattendue est survenue. Clique sur « Réessayer » ; si ça recommence, préviens la personne qui t'a envoyé le lien.",
 
   "stundtransfer.admin.title": "Dépôts reçus",
   "stundtransfer.admin.button": "Dépôts reçus",

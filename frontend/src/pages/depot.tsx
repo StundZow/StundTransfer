@@ -1,27 +1,23 @@
 // StundTransfer: home page for visitors (the middleware shows it on "/").
 // Public deposit (Admin > Configuration > StundTransfer): no account, no link.
-import { Alert, LoadingOverlay } from "@mantine/core";
-import { useEffect, useState } from "react";
+import { Alert } from "@mantine/core";
 import { TbInfoCircle } from "react-icons/tb";
 import { FormattedMessage } from "react-intl";
 import Meta from "../components/Meta";
 import useTranslate from "../hooks/useTranslate.hook";
 import DepositPage from "../stundtransfer/DepositPage";
-import stundTransferService, { LinkInfo } from "../stundtransfer/stundtransfer.service";
+import stundTransferService from "../stundtransfer/stundtransfer.service";
+import { DepositInfoLoading, useDepositInfo } from "../stundtransfer/useDepositInfo";
 
 const Depot = () => {
   const t = useTranslate();
-  // undefined: loading, null: public deposit closed
-  const [info, setInfo] = useState<LinkInfo | null>();
+  // null: public deposit closed (a short error is retried, not taken as closed)
+  const { info, unreachable } = useDepositInfo(
+    stundTransferService.getPublicInfo,
+    "public",
+  );
 
-  useEffect(() => {
-    stundTransferService
-      .getPublicInfo()
-      .then((publicInfo) => setInfo(publicInfo.depositMode ? publicInfo : null))
-      .catch(() => setInfo(null));
-  }, []);
-
-  if (info === undefined) return <LoadingOverlay visible />;
+  if (info === undefined) return <DepositInfoLoading unreachable={unreachable} />;
   if (info) return <DepositPage info={info} />;
   return (
     <>

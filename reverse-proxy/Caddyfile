@@ -1,4 +1,14 @@
 :3000 {
+	# StundTransfer: security headers. HSTS only counts on the HTTPS address
+	# (DSM's reverse proxy); nothing in the app is shown in a frame.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		defer
+	}
+
 	# Reverse proxy for /api
 	reverse_proxy /api/* http://localhost:{$BACKEND_PORT:8080}
 

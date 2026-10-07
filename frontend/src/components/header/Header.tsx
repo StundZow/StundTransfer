@@ -153,6 +153,7 @@ const Header = () => {
   const isShareOrUploadPage = [
     "/upload/[reverseShareToken]",
     "/share/[shareId]",
+    "/depot", // StundTransfer: the deposit page ("/") is our upload page
   ].includes(router.pathname);
   const showAuthButtons = config.get("general.showAuthButtons");
   const shouldHideAuthButtons = !showAuthButtons && isShareOrUploadPage;
@@ -390,7 +391,7 @@ const Header = () => {
           <Group spacing={5} className={classes.links}>
             <Group>{desktopItems}</Group>
           </Group>
-          {!user && <GuestSignInButton /> /* StundTransfer */}
+          {!user && !shouldHideAuthButtons && <GuestSignInButton /> /* StundTransfer */}
           <Burger
             opened={opened}
             onClick={toggle}

@@ -1,14 +1,14 @@
 // StundTransfer: end-to-end test of the deposit API against a running backend.
 //
 // Needs a backend started with STUNDTRANSFER_TRANSFER_DIR set, and two reverse
-// shares in its database: TOKEN (valid, remaining uses >= 2, max size >= 20 MB)
+// shares in its database: TOKEN (valid, remaining uses >= 3, max size >= 20 MB)
 // and EXHAUSTED_TOKEN (remaining uses = 0).
 //
 //   BASE_URL=http://localhost:8089/api TRANSFER_DIR=/path/to/transfer \
 //   [DB_PATH=/path/to/pingvin-share.db] node test/stundtransfer/e2e-deposit.mjs
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { access, readFile, readdir, stat } from "node:fs/promises";
+import { access, readFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:8089/api";
@@ -36,11 +36,20 @@ async function api(method, url, { body, secret, raw, type = STREAM_TYPE } = {}) 
   if (secret) headers["x-deposit-secret"] = secret;
   if (raw !== undefined) headers["content-type"] = type;
   else if (body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(BASE + url, {
-    method,
-    headers,
-    body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  for (let attempt = 1; ; attempt++) {
+    response = await fetch(BASE + url, {
+      method,
+      headers,
+      body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    // More deposits are created here than the per-minute limit allows: wait it out
+    const retryAfter = Number(response.headers.get("retry-after"));
+    if (response.status !== 429 || !retryAfter || attempt === 3) break;
+    console.log(`    (rate limit reached, waiting ${retryAfter + 1} s)`);
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, (retryAfter + 1) * 1000));
+  }
   const text = await response.text();
   let json;
   try {
@@ -164,6 +173,12 @@ r = await api("POST", "/stundtransfer/deposits", {
 assert.equal(r.status, 413);
 assert.equal(r.json.error, "stund_too_large");
 ok("deposit bigger than the link's max size is refused");
+
+r = await api("POST", "/stundtransfer/deposits", {
+  body: { token: TOKEN, uploaderName: "A", videoName: "B", fileCount: 100_001, totalSize: 1 },
+});
+assert.equal(r.status, 400);
+ok("more than 100 000 files in one deposit are refused");
 
 // --- Deposit A
 const filesA = [
@@ -328,6 +343,57 @@ r = await api("DELETE", `/stundtransfer/deposits/${A.depositId}`, { secret: A.se
 assert.equal(r.status, 409);
 assert.equal(await exists(path.join(TRANSFER, "Litsu - Annulé")), false);
 ok("uploader can cancel: sent chunks deleted, nothing stored, a received deposit cannot be cancelled");
+
+r = await api("GET", `/stundtransfer/deposits/${C.depositId}`, { secret: C.secret });
+assert.equal(r.status, 200);
+assert.equal(r.json.status, "CANCELLED");
+r = await api("POST", `/stundtransfer/deposits/${C.depositId}/complete`, { secret: C.secret });
+assert.equal(r.status, 409);
+assert.equal(r.json.error, "stund_cancelled");
+r = await api("GET", `/stundtransfer/deposits/${A.depositId}`, { secret: A.secret });
+assert.equal(r.json.status, "RECEIVED");
+ok('a cancelled deposit says "CANCELLED" and can never be finished');
+
+// --- Deposit G: the staging folder is deleted by hand during the upload
+const filesG = [
+  file("efface.mov", 2_500_000),
+  // "Date modified" before 1970 (broken camera clock)
+  { ...file("ancien.mov", 1000), lastModified: -3_600_000 },
+];
+const G = await startDeposit("Litsu", "Effacé", filesG, 1_000_000);
+ok("files dated before 1970 are accepted");
+r = await api("POST", `/stundtransfer/deposits/${G.depositId}/files`, {
+  secret: G.secret,
+  body: { files: [{ path: "x".repeat(1025), size: 1 }] },
+});
+assert.equal(r.status, 400);
+ok("too long file paths are refused");
+
+const [g1, g2] = G.files;
+await uploadJobs(G, chunkJobs(G, (f, index) => f === g1 && index > 0));
+await rm(path.join(STAGING, G.depositId), { recursive: true, force: true });
+await uploadJobs(G, chunkJobs(G, (f, index) => f !== g1 || index === 0));
+ok("chunks still accepted after the staging folder was deleted (no endless errors)");
+
+r = await api("POST", `/stundtransfer/deposits/${G.depositId}/complete`, { secret: G.secret });
+assert.equal(r.status, 409);
+assert.equal(r.json.error, "stund_incomplete");
+assert.deepEqual([...r.json.missingFiles].sort(), [g1.id, g2.id].sort());
+r = await api("GET", `/stundtransfer/deposits/${G.depositId}`, { secret: G.secret });
+const stateG1 = r.json.files.find((f) => f.id === g1.id);
+const stateG2 = r.json.files.find((f) => f.id === g2.id);
+assert.equal(stateG1.receivedChunks.includes(0), false);
+assert.equal(stateG2.status, "UPLOADING");
+assert.deepEqual(stateG2.receivedChunks, []);
+await uploadJobs(G, [
+  ...chunkJobs(G, (f, index) => f !== g1 || stateG1.receivedChunks.includes(index)),
+  { f: g2, index: 0 },
+]);
+r = await api("GET", `/stundtransfer/deposits/${G.depositId}`, { secret: G.secret });
+assert.ok(r.json.files.every((f) => f.status === "UPLOADED"), JSON.stringify(r.json.files));
+r = await api("DELETE", `/stundtransfer/deposits/${G.depositId}`, { secret: G.secret });
+assert.equal(r.status, 200);
+ok("chunks lost with the staging folder are asked again (never stored with missing parts)");
 
 // --- Public deposit (no link): depends on Admin > Configuration > StundTransfer
 r = await api("GET", "/stundtransfer/public");

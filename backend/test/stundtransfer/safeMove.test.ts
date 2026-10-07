@@ -8,8 +8,11 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   DestinationExistsError,
   MoveFs,
+  ensureFolder,
+  findMovedFile,
   moveIntoFolder,
   moveNoOverwrite,
+  syncDir,
 } from "../../src/stundtransfer/safeMove";
 
 let root: string;
@@ -120,6 +123,30 @@ describe("moveNoOverwrite", () => {
     assert.equal(await exists(dest), false);
   });
 
+  it("finishes a move interrupted after the link (restart), without a second copy", async () => {
+    const { file, size } = await stagedFile("a.mp4");
+    const dest = path.join(transfer, "a.mp4");
+    await fsp.link(file, dest);
+    assert.equal(await moveNoOverwrite(file, dest, size), "link");
+    assert.equal(await fsp.readFile(dest, "utf8"), "rush-data");
+    assert.equal(await exists(file), false);
+
+    const folder = path.join(transfer, "Litsu - Beamng");
+    await fsp.mkdir(folder);
+    const again = await stagedFile("b.part");
+    await fsp.link(again.file, path.join(folder, "b.mp4"));
+    const { finalPath } = await moveIntoFolder({
+      root: transfer,
+      src: again.file,
+      destDir: folder,
+      fileName: "b.mp4",
+      expectedSize: again.size,
+    });
+    assert.equal(finalPath, path.join(folder, "b.mp4"));
+    assert.deepEqual(await fsp.readdir(folder), ["b.mp4"]);
+    assert.equal(await exists(again.file), false);
+  });
+
   it("never keeps two copies if the source cannot be deleted", async () => {
     for (const link of [
       undefined,
@@ -176,6 +203,60 @@ describe("moveIntoFolder", () => {
     assert.equal(await fsp.readFile(path.join(folder, "A001.MP4"), "utf8"), "first");
     assert.equal(await fsp.readFile(path.join(folder, "A001 (2).MP4"), "utf8"), "second");
     assert.equal(await fsp.readFile(finalPath, "utf8"), "third");
+  });
+
+  it("gives a folder another name when a file already has its name", async () => {
+    const deposit = path.join(transfer, "Litsu - Beamng");
+    await fsp.mkdir(deposit);
+    await fsp.writeFile(path.join(deposit, "Rushes"), "a file without extension");
+
+    const dir = await ensureFolder(transfer, deposit, ["Rushes", "Card A"]);
+    assert.equal(dir, path.join(deposit, "Rushes (2)", "Card A"));
+    // Same folder for the next files, and when the move is resumed
+    assert.equal(await ensureFolder(transfer, deposit, ["Rushes", "Card A"]), dir);
+    assert.equal(await ensureFolder(transfer, deposit, ["Rushes"]), path.join(deposit, "Rushes (2)"));
+    assert.equal(await ensureFolder(transfer, deposit, []), deposit);
+    assert.equal(await fsp.readFile(path.join(deposit, "Rushes"), "utf8"), "a file without extension");
+
+    await assert.rejects(ensureFolder(transfer, path.join(root, "elsewhere"), ["x"]), /escapes/);
+    assert.equal(await exists(path.join(root, "elsewhere")), false);
+  });
+
+  it("finds a file already moved before a restart, never another file", async () => {
+    const folder = path.join(transfer, "Litsu - Beamng");
+    await fsp.mkdir(folder);
+    await fsp.writeFile(path.join(folder, "A001.MP4"), "other");
+    const before = new Date(Date.now() - 60000);
+    const { file, size } = await stagedFile("x.part");
+    const { finalPath } = await moveIntoFolder({
+      root: transfer,
+      src: file,
+      destDir: folder,
+      fileName: "A001.MP4",
+      expectedSize: size,
+    });
+    assert.equal(finalPath, path.join(folder, "A001 (2).MP4"));
+    const find = (options: Partial<Parameters<typeof findMovedFile>[0]> = {}) =>
+      findMovedFile({
+        destDir: folder,
+        fileName: "A001.MP4",
+        expectedSize: size,
+        notBefore: before,
+        isUsed: () => false,
+        ...options,
+      });
+
+    assert.equal(await find(), finalPath);
+    // Already used by another file of the deposit, wrong size, moved before the deposit ended
+    assert.equal(await find({ isUsed: (p) => p === finalPath }), undefined);
+    assert.equal(await find({ expectedSize: size + 1 }), undefined);
+    assert.equal(await find({ notBefore: new Date(Date.now() + 60000) }), undefined);
+    assert.equal(await find({ fileName: "A002.MP4" }), undefined);
+  });
+
+  it("flushes a folder to disk without ever failing", async () => {
+    await syncDir(transfer);
+    await syncDir(path.join(transfer, "missing"));
   });
 
   it("refuses a destination outside the transfer folder", async () => {

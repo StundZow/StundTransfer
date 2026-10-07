@@ -1,25 +1,23 @@
 // StundTransfer: on a deposit link, shows the deposit page instead of
 // Pingvin's reverse share upload page (used by pages/upload/[reverseShareToken].tsx).
-import { LoadingOverlay } from "@mantine/core";
-import { ComponentType, useEffect, useState } from "react";
+import { ComponentType } from "react";
 import DepositPage from "./DepositPage";
-import stundTransferService, { LinkInfo } from "./stundtransfer.service";
+import stundTransferService from "./stundtransfer.service";
+import { DepositInfoLoading, useDepositInfo } from "./useDepositInfo";
 
 export default function withDepositMode<P extends { reverseShareToken: string }>(
   ReverseSharePage: ComponentType<P>,
 ) {
   const DepositOrReverseShare = (props: P) => {
-    // undefined: loading, null: not a deposit link (or invalid: Pingvin shows its error)
-    const [info, setInfo] = useState<LinkInfo | null>();
+    // null: not a deposit link (or invalid: Pingvin shows its error). Only a
+    // definite answer shows the classic page: files sent there do not reach
+    // the NAS.
+    const { info, unreachable } = useDepositInfo(
+      () => stundTransferService.getLink(props.reverseShareToken),
+      props.reverseShareToken,
+    );
 
-    useEffect(() => {
-      stundTransferService
-        .getLink(props.reverseShareToken)
-        .then((link) => setInfo(link.depositMode ? link : null))
-        .catch(() => setInfo(null));
-    }, [props.reverseShareToken]);
-
-    if (info === undefined) return <LoadingOverlay visible />;
+    if (info === undefined) return <DepositInfoLoading unreachable={unreachable} />;
     if (info) return <DepositPage token={props.reverseShareToken} info={info} />;
     return <ReverseSharePage {...props} />;
   };

@@ -2,9 +2,10 @@
 // staging file, so chunks can arrive in any order and in parallel. A small
 // append-only log of received chunk indexes makes uploads resumable.
 // Pure module (no Nest/Prisma) so it can be unit-tested.
-import { constants as fsConstants } from "fs";
+import { Stats, constants as fsConstants } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { allocatedBytes } from "./freeSpace";
 
 export function totalChunks(size: number, chunkSize: number) {
   // A 0-byte file is still sent as one (empty) chunk
@@ -20,6 +21,8 @@ export function expectedChunkLength(
 }
 
 const WRITE_BLOCK_BYTES = 8 * 1024 * 1024;
+// Removed deposits remembered (chunks in flight can last up to 2 h)
+const MAX_REMOVED_REMEMBERED = 10_000;
 
 /** The chunk received does not have the expected length. */
 export class ChunkLengthError extends Error {
@@ -28,11 +31,29 @@ export class ChunkLengthError extends Error {
   }
 }
 
+/** The .part file was deleted or replaced while this chunk was written: it must be sent again. */
+export class StagingFileChangedError extends Error {
+  constructor() {
+    super("The staging file was deleted or replaced while a chunk was written");
+  }
+}
+
+/** The deposit was removed (cancelled, stored, cleaned up) while this chunk was received. */
+export class DepositRemovedError extends Error {
+  constructor() {
+    super("The deposit was removed while a chunk was written");
+  }
+}
+
 type FileState = {
   // Chunks written (durable or about to be flushed)
   received: Set<number>;
   // Chunks written but not yet flushed to disk and logged
   unflushed: Set<number>;
+  // Inode of the .part file the chunks above were written to
+  ino?: bigint;
+  // Chunks of a deleted .part being forgotten
+  resetting?: Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
   flushing?: Promise<void>;
 };
@@ -46,6 +67,8 @@ type FileState = {
 export class ChunkStore {
   // "<depositId>/<fileId>" -> state (loaded once from the log)
   private files = new Map<string, Promise<FileState>>();
+  // Chunks still in flight for these deposits never create their folder again
+  private removed = new Set<string>();
 
   constructor(
     private readonly root: string,
@@ -65,6 +88,7 @@ export class ChunkStore {
   }
 
   async prepareDeposit(depositId: string) {
+    this.removed.delete(depositId);
     await fs.mkdir(this.depositDir(depositId), { recursive: true });
   }
 
@@ -76,6 +100,8 @@ export class ChunkStore {
         received,
         unflushed: new Set<number>(),
       }));
+      // Not kept for a removed deposit (late chunks, flush timers)
+      if (this.removed.has(depositId)) return state;
       this.files.set(key, state);
       state.catch(() => this.files.delete(key));
     }
@@ -101,6 +127,119 @@ export class ChunkStore {
     return (await this.state(depositId, fileId)).received;
   }
 
+  /** Ids of the files that have a .part in the staging folder of a deposit. */
+  async stagedFileIds(depositId: string): Promise<Set<string>> {
+    try {
+      const names = await fs.readdir(this.depositDir(depositId));
+      return new Set(
+        names.filter((name) => name.endsWith(".part")).map((name) => name.slice(0, -5)),
+      );
+    } catch (e) {
+      if (e?.code === "ENOENT") return new Set();
+      throw e;
+    }
+  }
+
+  /**
+   * Bytes already on disk for a file being sent, as the free space of the
+   * volume counts them: the space allocated to its .part (chunks arrive in
+   * any order, so it can have holes), else the chunks received by this process.
+   */
+  async writtenBytes(depositId: string, fileId: string, size: number, chunkSize: number) {
+    let stats: Stats;
+    try {
+      stats = await fs.stat(this.dataPath(depositId, fileId));
+    } catch (e) {
+      if (e?.code === "ENOENT") return 0;
+      throw e;
+    }
+    const allocated = allocatedBytes(stats);
+    if (allocated !== undefined) return allocated;
+    const state = await this.files.get(`${depositId}/${fileId}`)?.catch(() => undefined);
+    let bytes = 0;
+    state?.received.forEach((index) => (bytes += expectedChunkLength(size, chunkSize, index)));
+    return bytes;
+  }
+
+  /** Whether the .part file is on disk with the expected size. */
+  async isStaged(depositId: string, fileId: string, size: number) {
+    try {
+      return (await fs.stat(this.dataPath(depositId, fileId))).size === size;
+    } catch (e) {
+      if (e?.code === "ENOENT") return false;
+      throw e;
+    }
+  }
+
+  /** Forgets everything received for a file (its data was lost): it will be sent again. */
+  async resetFile(depositId: string, fileId: string) {
+    const state = await this.state(depositId, fileId);
+    await fs.rm(this.dataPath(depositId, fileId), { force: true });
+    // Chunks still being written to the deleted file are not recorded
+    state.ino = undefined;
+    await this.forgetChunks(depositId, fileId, state);
+  }
+
+  /** Forgets the chunks received for a file. New chunks wait until it is done. */
+  private forgetChunks(depositId: string, fileId: string, state: FileState) {
+    state.resetting ??= (async () => {
+      // A flush in progress must not log its chunks after the log is deleted
+      while (state.flushing) await state.flushing.catch(() => undefined);
+      clearTimeout(state.timer);
+      state.timer = undefined;
+      state.received.clear();
+      state.unflushed.clear();
+      await fs.rm(this.logPath(depositId, fileId), { force: true });
+    })().finally(() => {
+      state.resetting = undefined;
+    });
+    return state.resetting;
+  }
+
+  /**
+   * Opens the .part file. If it was deleted behind our back (e.g. someone
+   * tidying the NAS by hand), the folder is created again and the chunks
+   * recorded for the old file are forgotten, so they are sent again instead
+   * of leaving zeros in the file. Never for a removed deposit.
+   */
+  private async openPart(depositId: string, fileId: string, state: FileState) {
+    const file = this.dataPath(depositId, fileId);
+    let created = false;
+    let handle: fs.FileHandle;
+    try {
+      handle = await fs.open(file, fsConstants.O_WRONLY);
+    } catch (e) {
+      if (e?.code !== "ENOENT") throw e;
+      if (this.removed.has(depositId)) throw new DepositRemovedError();
+      await fs.mkdir(this.depositDir(depositId), { recursive: true });
+      // O_CREAT without O_TRUNC: parallel chunks never erase each other
+      handle = await fs.open(file, fsConstants.O_WRONLY | fsConstants.O_CREAT, 0o644);
+      created = true;
+      if (this.removed.has(depositId)) {
+        // Removed meanwhile: what was just created goes too
+        await handle.close();
+        await fs.rm(this.depositDir(depositId), { recursive: true, force: true });
+        throw new DepositRemovedError();
+      }
+    }
+    let ino: bigint;
+    try {
+      ({ ino } = await handle.stat({ bigint: true }));
+      if (state.ino !== ino) {
+        // After a restart the log is trusted if its .part file is still there
+        const stale = state.ino !== undefined || (created && state.received.size > 0);
+        // Set first: chunks still being written to the old file are not recorded
+        state.ino = ino;
+        if (stale) this.forgetChunks(depositId, fileId, state);
+      }
+      await state.resetting;
+    } catch (e) {
+      await handle.close();
+      throw e;
+    }
+    return { handle, ino };
+  }
+
   /**
    * Writes `data` at `position`. Writing the same chunk twice (network retry)
    * is harmless. When the last missing chunk arrives, everything is flushed
@@ -116,12 +255,9 @@ export class ChunkStore {
     totalChunks: number,
     expectedLength: number = Buffer.isBuffer(data) ? data.length : 0,
   ): Promise<Set<number>> {
-    // O_CREAT without O_TRUNC: parallel chunks never erase each other
-    const handle = await fs.open(
-      this.dataPath(depositId, fileId),
-      fsConstants.O_WRONLY | fsConstants.O_CREAT,
-      0o644,
-    );
+    if (this.removed.has(depositId)) throw new DepositRemovedError();
+    const state = await this.state(depositId, fileId);
+    const { handle, ino } = await this.openPart(depositId, fileId, state);
     const writeAt = async (block: Buffer, at: number) => {
       let offset = 0;
       while (offset < block.length) {
@@ -174,8 +310,10 @@ export class ChunkStore {
     }
     // Incomplete chunk (connection cut): not recorded, it will be sent again
     if (received !== expectedLength) throw new ChunkLengthError();
+    // Written to a .part deleted with its deposit: never recorded
+    if (this.removed.has(depositId)) throw new DepositRemovedError();
+    if (state.ino !== ino) throw new StagingFileChangedError();
 
-    const state = await this.state(depositId, fileId);
     if (!state.received.has(index)) {
       state.received.add(index);
       state.unflushed.add(index);
@@ -188,12 +326,15 @@ export class ChunkStore {
         state.timer = undefined;
         this.flush(depositId, fileId).catch(() => undefined);
       }, this.flushDelayMs);
+      // Never keeps the process alive (unflushed chunks are simply sent again)
+      state.timer.unref?.();
     }
     return state.received;
   }
 
   /** Flushes written chunks to disk, then logs them as received. */
   async flush(depositId: string, fileId: string) {
+    if (this.removed.has(depositId)) return;
     const state = await this.state(depositId, fileId);
     // One flush at a time per file
     while (state.flushing) await state.flushing.catch(() => undefined);
@@ -233,6 +374,11 @@ export class ChunkStore {
   }
 
   async removeDeposit(depositId: string) {
+    // Moved to the end: the oldest are forgotten first (a Set keeps the order)
+    this.removed.delete(depositId);
+    this.removed.add(depositId);
+    if (this.removed.size > MAX_REMOVED_REMEMBERED)
+      this.removed.delete(this.removed.values().next().value);
     this.forgetDeposit(depositId);
     await fs.rm(this.depositDir(depositId), { recursive: true, force: true });
   }

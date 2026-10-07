@@ -17,7 +17,16 @@ import {
   Title,
 } from "@mantine/core";
 import { useModals } from "@mantine/modals";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { showNotification } from "@mantine/notifications";
+import { AxiosError } from "axios";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   TbAlertTriangle,
   TbCircleCheck,
@@ -38,12 +47,16 @@ import {
   SelectedFile,
   automaticNames,
   baseName,
+  batches,
   effectiveName,
   effectivePath,
   fileKey,
   formatDuration,
   formatSize,
+  freePath,
+  renamedPath,
   resumeMemory,
+  resumePaths,
   selectFiles,
 } from "./depositFiles";
 import stundTransferService, {
@@ -61,28 +74,65 @@ import {
 } from "./uploader";
 
 const BATCH_SIZE = 250;
+// Well under the server's 100 KB limit for a JSON body, even with long paths
+const BATCH_MAX_BYTES = 64 * 1000;
+// Server limit per deposit
+const MAX_FILES = 100000;
 const FILE_PREVIEW_COUNT = 300;
 const DONE_PREVIEW_COUNT = 20;
 
 type Phase =
   | { name: "checking" }
-  | { name: "form" }
-  | { name: "resume"; state: DepositState; session: DepositSession }
+  // notice: what happened to the previous upload (text id)
+  | { name: "form"; notice?: string }
+  | {
+      name: "resume";
+      state: DepositState;
+      session: DepositSession;
+      // New names saved before the interruption, by path
+      names?: Record<string, string>;
+    }
   | { name: "preparing" }
   | { name: "uploading" }
   | { name: "finishing" }
   | { name: "done"; paths: string[]; totalSize: number }
   | { name: "error"; code: string; values?: Record<string, string> };
 
+// The upload can be cancelled in these phases
+const CANCELLABLE: Phase["name"][] = ["preparing", "uploading"];
+
 const total = (values: number[]) => values.reduce((a, b) => a + b, 0);
 
-/** Retries calls failing because of the network; errors that will not go away are thrown. */
-async function withNetworkRetry<T>(call: () => Promise<T>): Promise<T> {
+const showInfo = (message: string) =>
+  showNotification({
+    icon: <TbInfoCircle />,
+    color: "blue",
+    radius: "md",
+    message,
+    autoClose: 10000,
+  });
+
+/**
+ * Retries calls failing because of the network; errors that will not go away
+ * are thrown. `onWait` shows "connection lost" between tries, `stopped` ends
+ * the tries (upload cancelled).
+ */
+async function withNetworkRetry<T>(
+  call: () => Promise<T>,
+  { onWait, stopped }: { onWait: (waiting: boolean) => void; stopped: () => boolean },
+): Promise<T> {
   for (let attempt = 0; ; attempt++) {
+    if (stopped()) throw new Error("Upload cancelled");
     try {
-      return await call();
+      const result = await call();
+      onWait(false);
+      return result;
     } catch (e) {
-      if (toFatalError(e) || attempt >= 30) throw e;
+      if (toFatalError(e) || attempt >= 30) {
+        onWait(false);
+        throw e;
+      }
+      onWait(true);
       await new Promise((resolve) =>
         setTimeout(resolve, Math.min(30000, 1000 * 2 ** Math.min(attempt, 5))),
       );
@@ -105,17 +155,27 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       return t(fallback);
     }
   };
-  const [phase, setPhase] = useState<Phase>({ name: "checking" });
+  const [phase, setPhaseState] = useState<Phase>({ name: "checking" });
+  // Read by the cancel window, which can stay open while the upload goes on
+  const phaseRef = useRef(phase);
+  const setPhase = (next: Phase) => {
+    phaseRef.current = next;
+    setPhaseState(next);
+  };
   const [uploaderName, setUploaderName] = useState("");
   const [videoName, setVideoName] = useState("");
   const [selected, setSelected] = useState<SelectedFile[]>([]);
   const [ignored, setIgnored] = useState(0);
   const [progress, setProgress] = useState<UploadProgress>();
+  // A call before or after the chunks is being retried (network or server down)
+  const [retrying, setRetrying] = useState(false);
   const modals = useModals();
+  const cancelModal = useRef<string>();
   const uploader = useRef<DepositUploader>();
-  // Deposit being uploaded, and whether the uploader cancelled it
+  // Deposit being uploaded
   const currentSession = useRef<DepositSession>();
-  const cancelled = useRef(false);
+  // Each send or resume gets a number: a cancelled one stops quietly
+  const runId = useRef(0);
   const wakeLock = useRef<{ release: () => Promise<void> }>();
 
   const busy = ["preparing", "uploading", "finishing"].includes(phase.name);
@@ -131,17 +191,31 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
     [selected],
   );
   const fieldsFilled = uploaderName.trim() !== "" && videoName.trim() !== "";
-  // "2026-07-22 14-32-10.mkv" -> "Stund - Beamng 1.mkv" (updated while typing)
+  // "2026-07-22 14-32-10.mkv" -> "Stund - Beamng 1.mkv", updated while typing
+  // but after the fields: typing stays fluid with hundreds of files
+  const namingUploader = useDeferredValue(uploaderName);
+  const namingVideo = useDeferredValue(videoName);
   const autoNames = useMemo(
-    () => automaticNames(selected, uploaderName, videoName),
-    [selected, uploaderName, videoName],
+    () => automaticNames(selected, namingUploader, namingVideo),
+    [selected, namingUploader, namingVideo],
   );
 
   useEffect(() => {
     checkInterruptedUpload();
-    return () => uploader.current?.stop();
+    return () => {
+      runId.current++;
+      uploader.current?.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Nothing to cancel anymore (received, failed): close the cancel window
+  useEffect(() => {
+    if (CANCELLABLE.includes(phase.name) || !cancelModal.current) return;
+    modals.closeModal(cancelModal.current);
+    cancelModal.current = undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.name]);
 
   // Keep the screen awake while uploading (the lock is lost when the tab is hidden)
   useEffect(() => {
@@ -172,7 +246,19 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       const state = await stundTransferService.getDeposit(saved);
       if (state.status !== "UPLOADING") {
         resumeMemory.clear(memoryKey);
-        return setPhase({ name: "form" });
+        return setPhase({
+          name: "form",
+          // Cancelled by the uploader, an administrator or for inactivity
+          notice:
+            state.status === "CANCELLED" ? "stundtransfer.resume.cancelled" : undefined,
+        });
+      }
+      if (state.files.length < state.fileCount) {
+        // Cut while the file list was being sent (reload, closed tab): no chunk
+        // was sent yet, and it could never be completed
+        stundTransferService.cancelDeposit(saved).catch(() => undefined);
+        resumeMemory.clear(memoryKey);
+        return setPhase({ name: "form", notice: "stundtransfer.resume.incomplete" });
       }
       setUploaderName(state.uploaderName);
       setVideoName(state.videoName);
@@ -185,23 +271,49 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           chunkSize: state.chunkSize,
           parallelUploads: state.parallelUploads,
         },
+        names: saved.names,
       });
     } catch (e) {
-      if (toFatalError(e)) resumeMemory.clear(memoryKey);
+      // Deposit deleted or key refused: nothing to resume (kept if the server is down)
+      const status = (e as AxiosError)?.response?.status;
+      if (status === 403 || status === 404) resumeMemory.clear(memoryKey);
       setPhase({ name: "form" });
     }
   };
 
   const addFiles = (files: File[]) => {
     const { kept, ignored: skipped } = selectFiles(files);
-    const known = new Set(selected.map((f) => f.path));
+    // Same path, size and date: the same file added twice
+    const identity = (f: SelectedFile) =>
+      `${f.size}:${f.lastModified}:${f.droppedPath ?? f.path}`;
+    const known = new Set(selected.map(identity));
+    const taken = new Set(selected.map((f) => f.path));
+    // Resume: only the files of the interrupted deposit, with their paths there
+    const expected = phase.name === "resume" ? resumePaths(phase.state.files) : undefined;
     const fresh: SelectedFile[] = [];
     const duplicates: string[] = [];
+    const renamed: SelectedFile[] = [];
+    const extra: string[] = [];
     for (const file of kept) {
-      if (known.has(file.path)) duplicates.push(file.path);
+      if (known.has(identity(file))) {
+        duplicates.push(file.path);
+        continue;
+      }
+      // Another file with the same path (e.g. C0001.MP4 of a second card): both are kept
+      const path = expected
+        ? expected.get(fileKey(file.path, file.size))?.find((p) => !taken.has(p))
+        : freePath(file.path, taken);
+      if (!path) {
+        extra.push(file.path);
+        continue;
+      }
+      known.add(identity(file));
+      taken.add(path);
+      if (path === file.path) fresh.push(file);
       else {
-        known.add(file.path);
-        fresh.push(file);
+        const numbered = { ...file, path, droppedPath: file.path };
+        fresh.push(numbered);
+        if (!expected) renamed.push(numbered);
       }
     }
     if (duplicates.length > 0)
@@ -213,6 +325,10 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
               : duplicates[0],
         }),
       );
+    if (selected.length + fresh.length > MAX_FILES) {
+      toast.error(t("stundtransfer.files.too-many", { max: MAX_FILES }));
+      return;
+    }
     if (
       phase.name === "form" &&
       maxSize > 0 &&
@@ -221,9 +337,44 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       toast.error(t("stundtransfer.files.too-big", { maxSize: humanSize(maxSize) }));
       return;
     }
+    if (renamed.length > 0)
+      showInfo(
+        t("stundtransfer.files.renamed", {
+          count: renamed.length,
+          name: renamed[0].droppedPath,
+          newName: renamed[0].path,
+        }),
+      );
+    if (extra.length > 0)
+      showInfo(t("stundtransfer.resume.extra", { count: extra.length, name: extra[0] }));
     setIgnored((count) => count + skipped);
     setSelected((current) => [...current, ...fresh]);
   };
+
+  // Same callbacks for every row: the rows not changed are not drawn again
+  const renameFile = useCallback(
+    (path: string, name: string | undefined) =>
+      setSelected((current) =>
+        current.map((c) =>
+          // Same as the original name: keep it, no automatic name
+          c.path === path ? { ...c, name, keepOriginal: !name } : c,
+        ),
+      ),
+    [],
+  );
+  const revertFile = useCallback(
+    (path: string) =>
+      setSelected((current) =>
+        current.map((c) =>
+          c.path === path ? { ...c, name: undefined, keepOriginal: true } : c,
+        ),
+      ),
+    [],
+  );
+  const removeFile = useCallback(
+    (path: string) => setSelected((current) => current.filter((c) => c.path !== path)),
+    [],
+  );
 
   // Server files still missing chunks, matched with the files picked in the browser
   const toUploadItems = (files: DepositFileState[]): UploadItem[] =>
@@ -238,36 +389,53 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
         received: new Set(f.receivedChunks ?? []),
       }));
 
-  const fail = (e: unknown) => {
+  const fail = (e: unknown, run: number) => {
+    // Cancelled (or replaced by another upload): nothing to show
+    if (runId.current !== run) return;
     uploader.current?.stop();
-    if (cancelled.current) return;
+    setRetrying(false);
     const fatal = toFatalError(e);
     if (!fatal) console.error(e);
     setPhase({ name: "error", code: fatal?.code ?? "unknown", values: fatal?.values });
   };
 
+  // Network retries of an upload: they end when it is cancelled
+  const retry = <T,>(run: number, call: () => Promise<T>) =>
+    withNetworkRetry(call, {
+      onWait: (waiting) => runId.current === run && setRetrying(waiting),
+      stopped: () => runId.current !== run,
+    });
+
   const upload = async (
+    run: number,
     session: DepositSession,
     items: UploadItem[],
     paths: string[],
     totalSize: number,
   ) => {
     currentSession.current = session;
-    cancelled.current = false;
     setPhase({ name: "uploading" });
+    // Chunks refused by the server's body parser: the next rounds send them streamed
+    let streamed = false;
     for (let round = 0; ; round++) {
-      const run = new DepositUploader(session, items, setProgress);
-      uploader.current = run;
-      await run.run();
-      if (cancelled.current) return;
+      const sending: DepositUploader = new DepositUploader(
+        session,
+        items,
+        setProgress,
+        streamed,
+      );
+      uploader.current = sending;
+      await sending.run();
+      streamed = sending.streamed;
+      if (runId.current !== run) return;
       setPhase({ name: "finishing" });
       try {
-        await withNetworkRetry(() => stundTransferService.complete(session));
+        await retry(run, () => stundTransferService.complete(session));
         break;
       } catch (e) {
         if (toFatalError(e)?.code !== "stund_incomplete" || round >= 2) throw e;
         // The server is missing some chunks: send them again
-        const state = await withNetworkRetry(() => stundTransferService.getDeposit(session));
+        const state = await retry(run, () => stundTransferService.getDeposit(session));
         items = toUploadItems(state.files);
         setPhase({ name: "uploading" });
       }
@@ -277,11 +445,27 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
   };
 
   const send = async () => {
-    cancelled.current = false;
+    const run = ++runId.current;
+    currentSession.current = undefined;
     setProgress(undefined);
+    setRetrying(false);
     setPhase({ name: "preparing" });
+    // Names of now, not the ones of the list (updated a bit later)
+    const names = automaticNames(selected, uploaderName, videoName);
+    const entries = selected.map((f) => {
+      const name = effectiveName(f, names);
+      return {
+        path: f.path,
+        size: f.size,
+        // Dated before 1970 (wrong clock): 1970
+        lastModified: Math.max(0, f.lastModified),
+        name: name !== baseName(f.path) ? name : undefined,
+      };
+    });
+    let created: DepositSession | undefined;
+    let uploading = false;
     try {
-      const session = await withNetworkRetry(() =>
+      const session = await retry(run, () =>
         stundTransferService.createDeposit({
           token,
           uploaderName: uploaderName.trim(),
@@ -290,56 +474,69 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           totalSize: selectedSize,
         }),
       );
+      created = session;
+      if (runId.current !== run) throw new Error("Upload cancelled");
+      // Saved at once: after a reload while the file list is being sent, the
+      // page deletes this deposit (it could never be completed) and says so
       resumeMemory.save(memoryKey, {
         depositId: session.depositId,
         secret: session.secret,
         savedAt: Date.now(),
+        names: Object.fromEntries(
+          entries.flatMap((e) => (e.name ? [[e.path, e.name] as const] : [])),
+        ),
       });
       const registered: DepositFileState[] = [];
-      for (let i = 0; i < selected.length; i += BATCH_SIZE) {
-        const batch = selected.slice(i, i + BATCH_SIZE).map((f) => ({
-          path: f.path,
-          size: f.size,
-          lastModified: f.lastModified,
-          name:
-            effectiveName(f, autoNames) !== baseName(f.path)
-              ? effectiveName(f, autoNames)
-              : undefined,
-        }));
+      for (const batch of batches(entries, BATCH_SIZE, BATCH_MAX_BYTES))
         registered.push(
-          ...(await withNetworkRetry(() => stundTransferService.addFiles(session, batch))),
+          ...(await retry(run, () => stundTransferService.addFiles(session, batch))),
         );
-      }
+      if (runId.current !== run) throw new Error("Upload cancelled");
+      uploading = true;
       await upload(
+        run,
         session,
         toUploadItems(registered),
-        selected.map((f) => effectivePath(f, autoNames)), // shown on "Reçu", with the new names
+        selected.map((f) => effectivePath(f, names)), // shown on "Reçu", with the new names
         selectedSize,
       );
     } catch (e) {
-      fail(e);
+      // Stopped before any chunk was sent: nothing to resume, delete it now
+      if (created && !uploading) {
+        stundTransferService.cancelDeposit(created).catch(() => undefined);
+        // Its resume entry too, unless another upload has replaced it meanwhile
+        if (resumeMemory.load(memoryKey)?.depositId === created.depositId)
+          resumeMemory.clear(memoryKey);
+      }
+      fail(e, run);
     }
   };
 
   const resume = async () => {
     if (phase.name !== "resume") return;
-    const { state, session } = phase;
-    cancelled.current = false;
+    const { state, session, names } = phase;
+    const run = ++runId.current;
     setProgress(undefined);
+    setRetrying(false);
     try {
       await upload(
+        run,
         session,
         toUploadItems(state.files),
-        state.files.map((f) => f.path),
+        // Shown on "Reçu", with the new names saved before the interruption
+        state.files.map((f) => {
+          const name = names?.[f.path];
+          return name ? renamedPath(f.path, name) : f.path;
+        }),
         state.totalSize,
       );
     } catch (e) {
-      fail(e);
+      fail(e, run);
     }
   };
 
-  const cancelUpload = () =>
-    modals.openConfirmModal({
+  const cancelUpload = () => {
+    cancelModal.current = modals.openConfirmModal({
       title: t("stundtransfer.upload.cancel.confirm.title"),
       children: (
         <Text size="sm">{t("stundtransfer.upload.cancel.confirm.description")}</Text>
@@ -350,17 +547,22 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       },
       confirmProps: { color: "red" },
       onConfirm: async () => {
-        cancelled.current = true;
+        // Finished meanwhile: the files arrived, nothing to cancel
+        if (!CANCELLABLE.includes(phaseRef.current.name)) return;
+        runId.current++;
         uploader.current?.stop();
+        // Still preparing: send() deletes the deposit it created
         const session = currentSession.current;
         if (session)
           await stundTransferService.cancelDeposit(session).catch(() => undefined);
         resumeMemory.clear(memoryKey);
+        setRetrying(false);
         setProgress(undefined);
         setPhase({ name: "form" });
         toast.success(t("stundtransfer.upload.cancelled"));
       },
     });
+  };
 
   const startOver = () => {
     // Giving up an interrupted upload: delete what was already sent
@@ -401,24 +603,9 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
             file={f}
             name={effectiveName(f, autoNames)}
             sizeLabel={humanSize(f.size)}
-            onRename={(name) =>
-              setSelected((current) =>
-                current.map((c) =>
-                  // Same as the original name: keep it, no automatic name
-                  c.path === f.path ? { ...c, name, keepOriginal: !name } : c,
-                ),
-              )
-            }
-            onRevert={() =>
-              setSelected((current) =>
-                current.map((c) =>
-                  c.path === f.path ? { ...c, name: undefined, keepOriginal: true } : c,
-                ),
-              )
-            }
-            onRemove={() =>
-              setSelected((current) => current.filter((c) => c.path !== f.path))
-            }
+            onRename={renameFile}
+            onRevert={revertFile}
+            onRemove={removeFile}
           />
         ))}
         {selected.length > FILE_PREVIEW_COUNT && (
@@ -449,6 +636,16 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
       case "form":
         return (
           <Stack spacing="lg">
+            {phase.notice && (
+              <Alert
+                color="orange"
+                icon={<TbInfoCircle />}
+                withCloseButton
+                onClose={() => setPhase({ name: "form" })}
+              >
+                <FormattedMessage id={phase.notice} />
+              </Alert>
+            )}
             <div>
               <Title order={2}>
                 <FormattedMessage id="stundtransfer.form.title" />
@@ -619,7 +816,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
                 </Text>
               </>
             )}
-            {progress?.reconnecting && (
+            {(progress?.reconnecting || retrying) && (
               <Alert color="orange" icon={<TbPlugConnectedX />}>
                 <FormattedMessage id="stundtransfer.upload.reconnecting" />
               </Alert>
@@ -627,7 +824,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
             <Alert color="blue" variant="light" icon={<TbInfoCircle />}>
               <FormattedMessage id="stundtransfer.upload.keep-open" />
             </Alert>
-            {phase.name === "uploading" && (
+            {CANCELLABLE.includes(phase.name) && (
               <Button
                 variant="subtle"
                 color="red"
@@ -689,7 +886,9 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
             >
               {intl.messages[key]
                 ? t(key, phase.values)
-                : t("stundtransfer.error.unknown")}
+                : t("stundtransfer.error.unknown") +
+                  // Code given by the server, for the person who manages it
+                  (phase.code !== "unknown" ? ` (${phase.code})` : "")}
             </Alert>
             <Button leftIcon={<TbRefresh />} onClick={checkInterruptedUpload}>
               <FormattedMessage id="stundtransfer.error.retry" />

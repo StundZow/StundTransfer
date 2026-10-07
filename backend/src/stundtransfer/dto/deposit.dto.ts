@@ -54,8 +54,9 @@ export class CreateDepositDTO {
 
 export class DepositFileDTO {
   // Relative path as seen by the browser, e.g. "Card A/CLIP/A001.MP4"
+  // (stored for each file, so limited; the browser does not check it)
   @IsString()
-  @Length(1, 4096)
+  @Length(1, 2048)
   path: string;
 
   @IsInt()
@@ -69,10 +70,10 @@ export class DepositFileDTO {
   @Length(1, 255)
   name?: string;
 
-  // File "date modified", in milliseconds
+  // File "date modified", in milliseconds. Can be before 1970 (broken camera
+  // clock, Windows "zero" date): 1970 is used instead.
   @IsOptional()
   @IsInt()
-  @Min(0)
   lastModified?: number;
 }
 

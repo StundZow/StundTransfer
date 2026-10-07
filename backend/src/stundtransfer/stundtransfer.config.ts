@@ -41,7 +41,7 @@ export const STUND_CHUNK_BYTES =
 export const STUND_MIN_CHUNK_BYTES = 1_000_000;
 export const STUND_MAX_CHUNK_BYTES = 256_000_000;
 
-export const STUND_MAX_FILES = 20_000;
+export const STUND_MAX_FILES = 100_000;
 export const STUND_MAX_FILES_PER_BATCH = 250;
 
 /** Setting holding the destination (path relative to STUND_ROOT_DIR, "" = root). */

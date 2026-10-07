@@ -12,6 +12,7 @@ import { Throttle } from "@nestjs/throttler";
 import { User } from "@prisma/client";
 import { I18nService } from "nestjs-i18n";
 import { GetUser } from "src/auth/decorator/getUser.decorator";
+import { AdministratorGuard } from "src/auth/guard/isAdmin.guard"; // StundTransfer
 import { JwtGuard } from "src/auth/guard/jwt.guard";
 import { ConfigService } from "src/config/config.service";
 import { CreateReverseShareDTO } from "./dto/createReverseShare.dto";
@@ -41,7 +42,7 @@ export class ReverseShareController {
   }
 
   @Post()
-  @UseGuards(JwtGuard)
+  @UseGuards(JwtGuard, AdministratorGuard) // StundTransfer: only administrators create links
   async create(@Body() body: CreateReverseShareDTO, @GetUser() user: User) {
     const token = await this.reverseShareService.create(body, user.id);
 

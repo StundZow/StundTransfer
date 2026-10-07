@@ -22,10 +22,12 @@ import { ReverseShareService } from "src/reverseShare/reverseShare.service";
 import {
   ChunkLengthError,
   ChunkStore,
+  DepositRemovedError,
   expectedChunkLength,
   totalChunks,
 } from "./chunkStore";
 import { AddDepositFilesDTO, CreateDepositDTO } from "./dto/deposit.dto";
+import { FreeSpaceGuard, freeBytes, spaceStillNeeded } from "./freeSpace";
 import {
   assertRealPathInside,
   depositFolderName,
@@ -36,7 +38,7 @@ import {
   sanitizeRelativePath,
   sanitizeSegment,
 } from "./paths";
-import { moveIntoFolder } from "./safeMove";
+import { ensureFolder, findMovedFile, moveIntoFolder, syncDir } from "./safeMove";
 import {
   STUND_CHUNK_BYTES,
   STUND_DESTINATION_KEY,
@@ -48,6 +50,19 @@ import {
 
 const ACTIVITY_WRITE_INTERVAL_MS = 60 * 1000;
 const TOKEN_REGEX = /^[a-zA-Z0-9_-]{1,200}$/;
+// Deposit folders not usable: checked again at most this often
+const STORAGE_RECHECK_MS = 30 * 1000;
+// Cancelled and abandoned deposits are removed from the history after this
+const PURGE_ABANDONED_AFTER_MS = 30 * 24 * 3600 * 1000;
+// Only deposits active this recently reserve free space (lastActivityAt is
+// written at least every minute while chunks arrive)
+const RESERVATION_ACTIVE_MS = 15 * 60 * 1000;
+// Clock margin when looking for a file moved before a restart
+const MOVED_FILE_CLOCK_SLACK_MS = 60 * 1000;
+// Files of a deposit looked up on disk at the same time (up to 100,000 files)
+const CHECK_CONCURRENCY = 32;
+// Write errors meaning "no more room" (EDQUOT: Synology quota of the account or shared folder)
+const OUT_OF_SPACE_CODES = new Set(["ENOSPC", "EDQUOT", "EFBIG"]);
 
 // Errors carry a stable "error" code the frontend translates.
 function stundError(
@@ -65,6 +80,24 @@ function stundError(
 function sha256(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
+
+/** Runs `task` on every item, CHECK_CONCURRENCY at a time, results in order. */
+async function inSlices<T, R>(items: T[], task: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += CHECK_CONCURRENCY)
+    results.push(...(await Promise.all(items.slice(i, i + CHECK_CONCURRENCY).map(task))));
+  return results;
+}
+
+function notEnoughSpace(message = "Not enough free space on the server for these files") {
+  return stundError(HttpStatus.INSUFFICIENT_STORAGE, "stund_not_enough_space", message);
+}
+
+const exists = (file: string) =>
+  fs.access(file).then(
+    () => true,
+    () => false,
+  );
 
 function formatBytes(bytes: number) {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -97,9 +130,15 @@ const ADMIN_DEPOSIT_FIELDS = {
 export class DepositService implements OnModuleInit {
   private readonly logger = new Logger("StundTransfer");
   private readonly chunks = new ChunkStore(STUND_STAGING_DIR);
+  // Free space of the staging volume while chunks are written
+  private readonly freeSpace = new FreeSpaceGuard(() => freeBytes(STUND_STAGING_DIR));
   private moveQueue: Promise<void> = Promise.resolve();
+  // New deposits are checked against the free space one at a time
+  private createQueue: Promise<unknown> = Promise.resolve();
   private lastActivityWrite = new Map<string, number>();
   private storageReady = false;
+  private storageCheckedAt = 0;
+  private storageCheck?: Promise<boolean>;
 
   constructor(
     private prisma: PrismaService,
@@ -114,10 +153,29 @@ export class DepositService implements OnModuleInit {
       );
       return;
     }
+    await this.ensureStorage();
+  }
 
+  /**
+   * Whether the deposit folders are usable. While they are not (NAS share not
+   * ready at startup, permissions...), they are checked again at most every
+   * 30 s when someone needs them, so no container restart is needed.
+   */
+  private async ensureStorage(): Promise<boolean> {
+    if (this.storageReady) return true;
+    if (!this.storageCheck) {
+      if (Date.now() - this.storageCheckedAt < STORAGE_RECHECK_MS) return false;
+      this.storageCheckedAt = Date.now();
+      this.storageCheck = this.startStorage().finally(() => {
+        this.storageCheck = undefined;
+      });
+    }
+    return this.storageCheck;
+  }
+
+  private async startStorage(): Promise<boolean> {
     try {
       const instantMoves = await this.checkStorage();
-      this.storageReady = true;
       this.logger.log(
         `Deposit mode enabled. Mounted folder: ${STUND_ROOT_DIR} | destination: /${this.destinationRelative()} | uploads in progress: ${STUND_STAGING_DIR}`,
       );
@@ -127,17 +185,20 @@ export class DepositService implements OnModuleInit {
         );
     } catch (e) {
       this.logger.error(
-        `Deposit folders are not usable (${e.message}). Check the Docker volume and the folder permissions on the NAS.`,
+        `Deposit folders are not usable (${e.message}). Check the Docker volume and the folder permissions on the NAS (checked again at the next deposit, at most every ${STORAGE_RECHECK_MS / 1000} s).`,
       );
-      return;
+      return false;
     }
+    this.storageReady = true;
 
-    // Moves interrupted by a restart are resumed.
+    // Moves interrupted by a restart are resumed, in their original order.
     const interrupted = await this.prisma.stundDeposit.findMany({
       where: { status: "MOVING" },
       select: { id: true },
+      orderBy: { completedAt: "asc" },
     });
     interrupted.forEach(({ id }) => this.scheduleMove(id));
+    return true;
   }
 
   /** Creates both folders, checks they are writable and whether moves between them are instant. */
@@ -183,10 +244,10 @@ export class DepositService implements OnModuleInit {
     return requested || STUND_CHUNK_BYTES || this.config.get("share.chunkSize");
   }
 
-  private assertReady() {
+  private async assertReady() {
     if (!isStundTransferEnabled())
       throw stundError(HttpStatus.NOT_FOUND, "stund_disabled", "Deposit mode is disabled");
-    if (!this.storageReady)
+    if (!(await this.ensureStorage()))
       throw stundError(
         HttpStatus.SERVICE_UNAVAILABLE,
         "stund_storage_unavailable",
@@ -225,7 +286,7 @@ export class DepositService implements OnModuleInit {
     return deposit;
   }
 
-  private assertUploading(deposit: StundDeposit) {
+  private assertUploading(deposit: Pick<StundDeposit, "status">) {
     if (deposit.status !== "UPLOADING")
       throw stundError(
         HttpStatus.CONFLICT,
@@ -233,6 +294,22 @@ export class DepositService implements OnModuleInit {
         "This deposit is not accepting files anymore",
         { status: deposit.status },
       );
+  }
+
+  /** Status changed by another request since it was read (e.g. finished and cancelled at the same time). */
+  private async currentStatus(depositId: string) {
+    const deposit = await this.prisma.stundDeposit.findUnique({
+      where: { id: depositId },
+      select: { status: true },
+    });
+    // Deleted meanwhile: same as cancelled for the uploader
+    return { status: deposit?.status ?? "ABANDONED" };
+  }
+
+  private cancelledError() {
+    return stundError(HttpStatus.CONFLICT, "stund_cancelled", "This deposit was cancelled", {
+      status: "ABANDONED",
+    });
   }
 
   private async touch(depositId: string) {
@@ -249,6 +326,8 @@ export class DepositService implements OnModuleInit {
   private async fileState(
     deposit: StundDeposit,
     file: Pick<StundDepositFile, "id" | "originalPath" | "size" | "status">,
+    // Files with a .part on disk (undefined: unknown)
+    staged?: Set<string>,
   ) {
     const size = Number(file.size);
     const state = {
@@ -260,10 +339,27 @@ export class DepositService implements OnModuleInit {
       receivedChunks: undefined as number[] | undefined,
     };
     if (file.status === "UPLOADING" && deposit.status === "UPLOADING") {
-      const received = await this.chunks.receivedChunks(deposit.id, file.id);
+      // No .part (e.g. deleted while the server was down): the chunks of its
+      // log are lost, they are asked again at once
+      const received =
+        !staged || staged.has(file.id)
+          ? await this.chunks.receivedChunks(deposit.id, file.id)
+          : [];
       state.receivedChunks = [...received].sort((a, b) => a - b);
     }
     return state;
+  }
+
+  /** States of the files of a deposit, read from disk a few at a time. */
+  private async fileStates(
+    deposit: StundDeposit,
+    files: Pick<StundDepositFile, "id" | "originalPath" | "size" | "status">[],
+  ) {
+    const staged =
+      deposit.status === "UPLOADING"
+        ? await this.chunks.stagedFileIds(deposit.id).catch(() => undefined)
+        : undefined;
+    return inSlices(files, (f) => this.fileState(deposit, f, staged));
   }
 
   // ---------------------------------------------------------------- uploader
@@ -292,7 +388,7 @@ export class DepositService implements OnModuleInit {
   }
 
   async createDeposit(dto: CreateDepositDTO) {
-    this.assertReady();
+    await this.assertReady();
     // With a deposit link: its limits apply. Without: the public deposit settings.
     let reverseShare: Awaited<ReturnType<DepositService["validLink"]>> | null = null;
     let maxSize: number;
@@ -330,27 +426,27 @@ export class DepositService implements OnModuleInit {
 
     // Recreated if someone deleted it (e.g. while tidying the NAS by hand)
     await fs.mkdir(STUND_STAGING_DIR, { recursive: true });
-    const { bavail, bsize } = await fs.statfs(STUND_STAGING_DIR);
-    if (bavail * bsize - dto.totalSize < this.config.get("stundtransfer.minFreeSpace"))
-      throw stundError(
-        HttpStatus.INSUFFICIENT_STORAGE,
-        "stund_not_enough_space",
-        "Not enough free space on the server for these files",
-      );
 
     const secret = crypto.randomBytes(32).toString("base64url");
-    const deposit = await this.prisma.stundDeposit.create({
-      data: {
-        uploaderName: dto.uploaderName.trim(),
-        videoName: dto.videoName.trim(),
-        folderName,
-        secretHash: sha256(secret),
-        totalSize: String(dto.totalSize),
-        fileCount: dto.fileCount,
-        chunkSize: this.chunkSize(dto.chunkSize),
-        reverseShareId: reverseShare?.id ?? null,
-        reverseShareOwnerId: reverseShare?.creatorId ?? null,
-      },
+    // Checked and created one at a time: two deposits never count on the same space
+    const deposit = await this.oneDepositAtATime(async () => {
+      const free = await freeBytes(STUND_STAGING_DIR);
+      const reserved = await this.reservedBytes();
+      if (free - reserved - dto.totalSize < this.config.get("stundtransfer.minFreeSpace"))
+        throw notEnoughSpace();
+      return this.prisma.stundDeposit.create({
+        data: {
+          uploaderName: dto.uploaderName.trim(),
+          videoName: dto.videoName.trim(),
+          folderName,
+          secretHash: sha256(secret),
+          totalSize: String(dto.totalSize),
+          fileCount: dto.fileCount,
+          chunkSize: this.chunkSize(dto.chunkSize),
+          reverseShareId: reverseShare?.id ?? null,
+          reverseShareOwnerId: reverseShare?.creatorId ?? null,
+        },
+      });
     });
     await this.chunks.prepareDeposit(deposit.id);
 
@@ -366,8 +462,76 @@ export class DepositService implements OnModuleInit {
     };
   }
 
+  private oneDepositAtATime<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.createQueue.then(task);
+    this.createQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  /**
+   * Space still needed by the deposits being uploaded: announced size minus
+   * what is already on disk (files received, and the part already written of
+   * the files being sent), since the free space of the volume already counts
+   * it. MOVING deposits are already on disk. Inactive deposits (tab closed,
+   * or big deposits announced but never sent) reserve nothing, so they cannot
+   * block everyone else until the cleanup; the free space check while writing
+   * still protects the volume.
+   */
+  private async reservedBytes(): Promise<number> {
+    const activeSince = Date.now() - RESERVATION_ACTIVE_MS;
+    const deposits = await this.prisma.$queryRaw<
+      {
+        id: string;
+        totalSize: string;
+        chunkSize: bigint | number;
+        received: bigint | number | null;
+      }[]
+    >`SELECT d.id AS id, d.totalSize AS totalSize, d.chunkSize AS chunkSize, SUM(CASE WHEN f.status != 'UPLOADING' THEN CAST(f.size AS INTEGER) ELSE 0 END) AS received FROM StundDeposit d LEFT JOIN StundDepositFile f ON f.depositId = d.id WHERE d.status = 'UPLOADING' AND d.lastActivityAt >= ${activeSince} GROUP BY d.id`;
+    const usage: { totalSize: number; onDisk: number }[] = [];
+    for (const d of deposits)
+      usage.push({
+        totalSize: Number(d.totalSize),
+        onDisk:
+          Number(d.received ?? 0) + (await this.bytesBeingSent(d.id, Number(d.chunkSize))),
+      });
+    return spaceStillNeeded(usage);
+  }
+
+  /** Bytes already written for the files of a deposit still being sent. */
+  private async bytesBeingSent(depositId: string, chunkSize: number) {
+    try {
+      // Only files with a .part have started (usually a few)
+      const staged = await this.chunks.stagedFileIds(depositId);
+      if (staged.size === 0) return 0;
+      const files = await this.prisma.stundDepositFile.findMany({
+        where: { depositId, status: "UPLOADING" },
+        select: { id: true, size: true },
+      });
+      const written = await inSlices(
+        files.filter((f) => staged.has(f.id)),
+        (f) => this.chunks.writtenBytes(depositId, f.id, Number(f.size), chunkSize),
+      );
+      return written.reduce((sum, bytes) => sum + bytes, 0);
+    } catch (e) {
+      // Counted as not started: a little more space is kept
+      this.logger.warn(
+        `Deposit ${depositId}: cannot measure what was already written (${e?.message ?? e})`,
+      );
+      return 0;
+    }
+  }
+
+  /** Largest chunk size given to deposits still being sent (read once at startup by main.ts). */
+  async largestChunkSizeInUse(): Promise<number> {
+    const { _max } = await this.prisma.stundDeposit.aggregate({
+      where: { status: "UPLOADING" },
+      _max: { chunkSize: true },
+    });
+    return _max.chunkSize ?? 0;
+  }
+
   async addFiles(depositId: string, secret: string, dto: AddDepositFilesDTO) {
-    this.assertReady();
+    await this.assertReady();
     const deposit = await this.authorize(depositId, secret);
     this.assertUploading(deposit);
 
@@ -421,8 +585,9 @@ export class DepositService implements OnModuleInit {
     if (newFiles.length > 0) {
       await this.prisma.stundDepositFile.createMany({
         data: newFiles.map((f) => {
+          // Before 1970 (broken camera clock): 1970
           const lastModified =
-            f.lastModified !== undefined ? new Date(f.lastModified) : null;
+            f.lastModified !== undefined ? new Date(Math.max(0, f.lastModified)) : null;
           return {
             depositId,
             originalPath: f.path,
@@ -440,9 +605,7 @@ export class DepositService implements OnModuleInit {
       where: { depositId, originalPath: { in: paths } },
       select: { id: true, originalPath: true, size: true, status: true },
     });
-    return {
-      files: await Promise.all(files.map((f) => this.fileState(deposit, f))),
-    };
+    return { files: await this.fileStates(deposit, files) };
   }
 
   /** State of a deposit, used by the uploader's browser to resume. */
@@ -455,15 +618,20 @@ export class DepositService implements OnModuleInit {
     });
     return {
       depositId: deposit.id,
-      // The uploader only needs to know the upload is over
-      status: deposit.status === "UPLOADING" ? "UPLOADING" : "RECEIVED",
+      // The uploader only needs to know whether the upload is over, and how
+      status:
+        deposit.status === "UPLOADING"
+          ? "UPLOADING"
+          : deposit.status === "ABANDONED"
+            ? "CANCELLED"
+            : "RECEIVED",
       uploaderName: deposit.uploaderName,
       videoName: deposit.videoName,
       fileCount: deposit.fileCount,
       totalSize: Number(deposit.totalSize),
       chunkSize: deposit.chunkSize,
       parallelUploads: this.parallelUploads(),
-      files: await Promise.all(files.map((f) => this.fileState(deposit, f))),
+      files: await this.fileStates(deposit, files),
     };
   }
 
@@ -476,7 +644,7 @@ export class DepositService implements OnModuleInit {
     data: Buffer | AsyncIterable<Buffer>,
     declaredLength?: number,
   ) {
-    this.assertReady();
+    await this.assertReady();
     const deposit = await this.authorize(depositId, secret);
     this.assertUploading(deposit);
 
@@ -503,6 +671,18 @@ export class DepositService implements OnModuleInit {
 
     if (file.status !== "UPLOADING") return { fileComplete: true };
 
+    // The volume (which may also hold the database) never fills up, even if
+    // something else uses the space promised to deposits. Half of the margin
+    // is kept here: the full margin is checked when a deposit starts, and
+    // refusing the last chunks of a deposit that fitted would be worse.
+    if (
+      !(await this.freeSpace.take(
+        expectedLength,
+        this.config.get("stundtransfer.minFreeSpace") / 2,
+      ))
+    )
+      throw notEnoughSpace("The server is out of space");
+
     let received: Set<number>;
     try {
       received = await this.chunks.writeChunk(
@@ -525,12 +705,13 @@ export class DepositService implements OnModuleInit {
         throw stundError(HttpStatus.BAD_REQUEST, "stund_bad_chunk", "Incomplete chunk", {
           expectedLength,
         });
-      if (e?.code === "ENOSPC")
-        throw stundError(
-          HttpStatus.INSUFFICIENT_STORAGE,
-          "stund_not_enough_space",
-          "The server is out of space",
-        );
+      if (OUT_OF_SPACE_CODES.has(e?.code)) throw notEnoughSpace("The server is out of space");
+      if (e instanceof DepositRemovedError) {
+        // Cancelled (or stored) while this chunk was received
+        const { status } = await this.currentStatus(depositId);
+        if (status === "ABANDONED") throw this.cancelledError();
+        this.assertUploading({ status });
+      }
       this.logger.error(`Deposit ${depositId}: cannot write chunk: ${e.message}`);
       throw stundError(
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -551,52 +732,109 @@ export class DepositService implements OnModuleInit {
 
   async complete(depositId: string, secret: string) {
     const deposit = await this.authorize(depositId, secret);
+    if (deposit.status === "ABANDONED") throw this.cancelledError();
     // Retried request: the uploader only needs to know it is received.
     if (["MOVING", "DONE", "ERROR"].includes(deposit.status))
       return { status: "RECEIVED" };
+    await this.assertReady();
     this.assertUploading(deposit);
 
     const files = await this.prisma.stundDepositFile.findMany({
       where: { depositId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, size: true },
     });
+    await this.checkStagedFiles(deposit, files);
     const missingFiles = files
       .filter((f) => f.status !== "UPLOADED")
       .map((f) => f.id);
-    if (files.length !== deposit.fileCount || missingFiles.length > 0)
+    if (files.length !== deposit.fileCount || missingFiles.length > 0) {
+      // Files deleted by a cancel made meanwhile
+      if ((await this.currentStatus(depositId)).status === "ABANDONED")
+        throw this.cancelledError();
       throw stundError(
         HttpStatus.CONFLICT,
         "stund_incomplete",
         "Some files are not completely uploaded yet",
         { missingFiles, registered: files.length, expected: deposit.fileCount },
       );
+    }
 
     const { count } = await this.prisma.stundDeposit.updateMany({
       where: { id: depositId, status: "UPLOADING" },
       data: { status: "MOVING", completedAt: new Date() },
     });
-    if (count === 1) {
-      if (deposit.reverseShareId)
-        await this.prisma.reverseShare.updateMany({
-          where: { id: deposit.reverseShareId, remainingUses: { gt: 0 } },
-          data: { remainingUses: { decrement: 1 } },
-        });
-      this.logger.log(
-        `Deposit ${depositId} fully received (${files.length} file(s), ${formatBytes(Number(deposit.totalSize))})`,
-      );
-      this.scheduleMove(depositId);
+    if (count === 0) {
+      // Cancelled meanwhile (uploader, admin, cleanup), or finished by a retried request
+      if ((await this.currentStatus(depositId)).status === "ABANDONED")
+        throw this.cancelledError();
+      return { status: "RECEIVED" };
     }
+    if (deposit.reverseShareId)
+      await this.prisma.reverseShare.updateMany({
+        where: { id: deposit.reverseShareId, remainingUses: { gt: 0 } },
+        data: { remainingUses: { decrement: 1 } },
+      });
+    this.logger.log(
+      `Deposit ${depositId} fully received (${files.length} file(s), ${formatBytes(Number(deposit.totalSize))})`,
+    );
+    this.scheduleMove(depositId);
     return { status: "RECEIVED" };
+  }
+
+  /**
+   * Before finishing: a file whose chunks are all logged counts as uploaded
+   * (crash between its last chunk and the database update), and a file whose
+   * data disappeared from the staging folder (deleted by hand) must be sent
+   * again instead of being stored with missing parts.
+   */
+  private async checkStagedFiles(
+    deposit: StundDeposit,
+    files: Pick<StundDepositFile, "id" | "status" | "size">[],
+  ) {
+    let lost = 0;
+    const check = async (file: (typeof files)[number]) => {
+      if (file.status !== "UPLOADING" && file.status !== "UPLOADED") return;
+      const size = Number(file.size);
+      if (file.status === "UPLOADING") {
+        await this.chunks.flush(deposit.id, file.id).catch(() => undefined);
+        const received = await this.chunks.receivedChunks(deposit.id, file.id);
+        if (received.size < totalChunks(size, deposit.chunkSize)) return;
+      }
+      if (await this.chunks.isStaged(deposit.id, file.id, size)) {
+        if (file.status === "UPLOADING") {
+          await this.prisma.stundDepositFile.updateMany({
+            where: { id: file.id, status: "UPLOADING" },
+            data: { status: "UPLOADED" },
+          });
+          file.status = "UPLOADED";
+        }
+        return;
+      }
+      lost++;
+      await this.chunks.resetFile(deposit.id, file.id);
+      await this.prisma.stundDepositFile.updateMany({
+        where: { id: file.id, status: { in: ["UPLOADING", "UPLOADED"] } },
+        data: { status: "UPLOADING" },
+      });
+      file.status = "UPLOADING";
+    };
+    await inSlices(files, check);
+    if (lost > 0)
+      this.logger.warn(
+        `Deposit ${deposit.id}: ${lost} file(s) missing from the staging folder (deleted by hand?), they will be sent again`,
+      );
   }
 
   /** The uploader cancels: files already sent are deleted from the staging folder. */
   async cancelByUploader(depositId: string, secret: string) {
     const deposit = await this.authorize(depositId, secret);
     this.assertUploading(deposit);
-    await this.prisma.stundDeposit.update({
-      where: { id: depositId },
+    // Only if still uploading: a deposit received meanwhile is kept
+    const { count } = await this.prisma.stundDeposit.updateMany({
+      where: { id: depositId, status: "UPLOADING" },
       data: { status: "ABANDONED", error: "Cancelled by the uploader" },
     });
+    if (count === 0) this.assertUploading(await this.currentStatus(depositId));
     await this.chunks.removeDeposit(depositId);
     this.lastActivityWrite.delete(depositId);
     this.logger.log(`Deposit ${depositId} cancelled by the uploader`);
@@ -632,7 +870,10 @@ export class DepositService implements OnModuleInit {
     const relative = (name: string) => [destination, name].filter(Boolean).join("/");
 
     if (this.config.get("stundtransfer.groupDeposits"))
-      return relative(await findExistingFolderName(parent, folderName));
+      return relative(
+        // Shortened like the other folder names (long emoji names exceed 255 bytes)
+        await findExistingFolderName(parent, folderCandidates(folderName).next().value as string),
+      );
 
     const taken = await existingFolderNamesLowercase(parent);
     for (const candidate of folderCandidates(folderName)) {
@@ -685,7 +926,7 @@ export class DepositService implements OnModuleInit {
   }
 
   async listFolders(relative?: string) {
-    this.assertReady();
+    await this.assertReady();
     const parts = this.folderParts(relative);
     const dir = this.folderPath(parts.join("/"));
     let entries: import("fs").Dirent[];
@@ -705,7 +946,7 @@ export class DepositService implements OnModuleInit {
   }
 
   async createFolder(relative: string | undefined, name: string) {
-    this.assertReady();
+    await this.assertReady();
     const parts = this.folderParts(relative);
     const clean = sanitizeSegment(name);
     if (!clean || /^[.@#]/.test(clean))
@@ -717,7 +958,7 @@ export class DepositService implements OnModuleInit {
   }
 
   async setDestination(relative: string | undefined, user: User) {
-    this.assertReady();
+    await this.assertReady();
     const parts = this.folderParts(relative);
     const dir = this.folderPath(parts.join("/"));
     try {
@@ -748,35 +989,64 @@ export class DepositService implements OnModuleInit {
       });
     }
 
+    const depositDir = resolveInside(STUND_ROOT_DIR, ...folder.split("/"));
+    const relative = (file: string) =>
+      path.relative(STUND_ROOT_DIR, file).split(path.sep).join("/");
+    // Final paths already taken by files of this deposit
+    const used = new Set(
+      deposit.files.filter((f) => f.status === "DONE" && f.finalPath).map((f) => f.finalPath),
+    );
+    // Sub-folders, created once ("Card A/CLIP" -> absolute path)
+    const folders = new Map<string, string>();
     const failures: string[] = [];
     let copies = 0;
     for (const file of deposit.files) {
-      if (file.status === "DONE") continue;
+      const src = this.chunks.dataPath(depositId, file.id);
+      // Already moved, unless a power cut undid it (the staged file is back)
+      if (file.status === "DONE" && !(await exists(src))) continue;
       try {
         const segments = sanitizeRelativePath(file.originalPath);
         const originalName = segments.pop();
         // Renamed by the uploader: same folders, new name
         const fileName = (file.targetName && sanitizeSegment(file.targetName)) || originalName;
-        const destDir = resolveInside(STUND_ROOT_DIR, ...folder.split("/"), ...segments);
-        const { finalPath, method } = await moveIntoFolder({
-          root: STUND_ROOT_DIR,
-          src: this.chunks.dataPath(depositId, file.id),
-          destDir,
-          fileName,
-          expectedSize: Number(file.size),
-          mtime: file.lastModified ?? undefined,
-        });
-        if (method === "copy") copies++;
+        const key = segments.join("/");
+        if (!folders.has(key))
+          folders.set(key, await ensureFolder(STUND_ROOT_DIR, depositDir, segments));
+        const destDir = folders.get(key);
+        if (file.finalPath) used.delete(file.finalPath);
+
+        let finalPath: string;
+        try {
+          let method: "link" | "copy";
+          ({ finalPath, method } = await moveIntoFolder({
+            root: STUND_ROOT_DIR,
+            src,
+            destDir,
+            fileName,
+            expectedSize: Number(file.size),
+            mtime: file.lastModified ?? undefined,
+          }));
+          if (method === "copy") copies++;
+        } catch (e) {
+          // Restart in the middle of this file's move: it may already be in its folder
+          if (e?.code !== "ENOENT" || (await exists(src))) throw e;
+          finalPath = await findMovedFile({
+            destDir,
+            fileName,
+            expectedSize: Number(file.size),
+            notBefore: deposit.completedAt
+              ? new Date(deposit.completedAt.getTime() - MOVED_FILE_CLOCK_SLACK_MS)
+              : undefined,
+            isUsed: (candidate) => used.has(relative(candidate)),
+          });
+          if (!finalPath) throw e;
+          if (file.lastModified)
+            await fs.utimes(finalPath, new Date(), file.lastModified).catch(() => undefined);
+        }
+        used.add(relative(finalPath));
         await this.prisma.stundDepositFile.update({
           where: { id: file.id },
-          data: {
-            status: "DONE",
-            error: null,
-            finalPath: path
-              .relative(STUND_ROOT_DIR, finalPath)
-              .split(path.sep)
-              .join("/"),
-          },
+          data: { status: "DONE", error: null, finalPath: relative(finalPath) },
         });
       } catch (e) {
         const message = String(e?.message ?? e).slice(0, 1000);
@@ -790,6 +1060,16 @@ export class DepositService implements OnModuleInit {
         });
       }
     }
+
+    // Moved files survive a power cut before the deposit is marked as stored
+    // (the folder holding the deposit folder, then every folder used)
+    const synced = new Set([path.dirname(depositDir)]);
+    for (let dir of folders.values())
+      while (!synced.has(dir)) {
+        synced.add(dir);
+        dir = path.dirname(dir);
+      }
+    await Promise.all([...synced].map((dir) => syncDir(dir)));
 
     if (failures.length === 0) {
       await this.prisma.stundDeposit.update({
@@ -866,7 +1146,7 @@ export class DepositService implements OnModuleInit {
   }
 
   async retry(depositId: string, user: User) {
-    this.assertReady();
+    await this.assertReady();
     const deposit = await this.getForAdmin(depositId, user);
     if (deposit.status !== "ERROR")
       throw stundError(
@@ -894,13 +1174,22 @@ export class DepositService implements OnModuleInit {
         "stund_busy",
         "This deposit is being moved, try again in a moment",
       );
-    await this.chunks.removeDeposit(depositId);
     if (["UPLOADING", "ERROR"].includes(deposit.status)) {
-      await this.prisma.stundDeposit.update({
-        where: { id: depositId },
+      // Only if unchanged: a deposit received or retried meanwhile is kept
+      const { count } = await this.prisma.stundDeposit.updateMany({
+        where: { id: depositId, status: { in: ["UPLOADING", "ERROR"] } },
         data: { status: "ABANDONED", error: "Cancelled by the administrator" },
       });
+      if (count === 0)
+        throw stundError(
+          HttpStatus.CONFLICT,
+          "stund_busy",
+          "This deposit is being moved, try again in a moment",
+        );
+      await this.chunks.removeDeposit(depositId);
+      this.lastActivityWrite.delete(depositId);
     } else {
+      await this.chunks.removeDeposit(depositId);
       await this.prisma.stundDeposit.delete({ where: { id: depositId } });
     }
   }
@@ -909,7 +1198,7 @@ export class DepositService implements OnModuleInit {
 
   @Cron("*/30 * * * *")
   async cleanupAbandonedDeposits() {
-    if (!this.storageReady) return;
+    if (!isStundTransferEnabled() || !(await this.ensureStorage())) return;
     const abandonAfterHours = this.abandonAfterHours();
     const cutoff = new Date(Date.now() - abandonAfterHours * 3600 * 1000);
 
@@ -917,16 +1206,20 @@ export class DepositService implements OnModuleInit {
       where: { status: "UPLOADING", lastActivityAt: { lt: cutoff } },
       select: { id: true },
     });
+    let abandoned = 0;
     for (const { id } of stale) {
-      await this.chunks.removeDeposit(id);
-      await this.prisma.stundDeposit.update({
-        where: { id },
+      // Only if still inactive: a deposit finished or resumed meanwhile is kept
+      const { count } = await this.prisma.stundDeposit.updateMany({
+        where: { id, status: "UPLOADING", lastActivityAt: { lt: cutoff } },
         data: {
           status: "ABANDONED",
           error: `No activity for ${Math.round(abandonAfterHours)} hours`,
         },
       });
+      if (count === 0) continue;
+      await this.chunks.removeDeposit(id);
       this.lastActivityWrite.delete(id);
+      abandoned++;
     }
 
     // Leftover folders without an active deposit (e.g. manual database restore)
@@ -949,9 +1242,18 @@ export class DepositService implements OnModuleInit {
       }
     }
 
-    if (stale.length + orphans > 0)
+    // Cancelled and abandoned deposits leave the history after a while, with
+    // their list of files (keeps the database small)
+    const { count: purged } = await this.prisma.stundDeposit.deleteMany({
+      where: {
+        status: "ABANDONED",
+        lastActivityAt: { lt: new Date(Date.now() - PURGE_ABANDONED_AFTER_MS) },
+      },
+    });
+
+    if (abandoned + orphans + purged > 0)
       this.logger.log(
-        `Cleaned ${stale.length} abandoned deposit(s) and ${orphans} leftover folder(s)`,
+        `Cleaned ${abandoned} abandoned deposit(s) and ${orphans} leftover folder(s), removed ${purged} old cancelled deposit(s) from the history`,
       );
   }
 }

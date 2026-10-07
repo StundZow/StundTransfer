@@ -1,7 +1,7 @@
 // StundTransfer: upload engine. Sends several chunks at the same time, retries
 // forever with an increasing delay on network errors, and reports progress,
 // speed and time left.
-import { AxiosError } from "axios";
+import { AxiosError, isAxiosError } from "axios";
 import stundTransferService, { DepositSession } from "./stundtransfer.service";
 
 export type UploadItem = {
@@ -35,6 +35,11 @@ export class FatalUploadError extends Error {
 
 // Abort a chunk when nothing moved for this long
 const STALL_TIMEOUT_MS = 30 * 1000;
+// A chunk cut without any answer after sending for this long is handled like
+// a stall: the connection is too slow for the time limit of a proxy
+const SLOW_CHUNK_MS = 120 * 1000;
+// After stalls, one more chunk at a time once this many went through in a row
+const RECOVER_AFTER_CHUNKS = 10;
 // Show "connection lost" when nothing moved for this long
 const QUIET_WARNING_MS = 10 * 1000;
 const MAX_RETRY_DELAY_MS = 30 * 1000;
@@ -48,8 +53,17 @@ export const chunkLength = (size: number, chunkSize: number, index: number) =>
 export function toFatalError(e: unknown): FatalUploadError | undefined {
   if (e instanceof FatalUploadError) return e;
   const response = (e as AxiosError<{ error?: string }>)?.response;
+  // The deposit folder is not usable: retrying for minutes would not help. A
+  // 502/503 without this code (proxy while the container restarts) is retried.
+  if (response?.data?.error === "stund_storage_unavailable")
+    return new FatalUploadError("stund_storage_unavailable");
   if (response && FATAL_STATUSES.includes(response.status))
-    return new FatalUploadError(response.data?.error ?? "unknown");
+    return new FatalUploadError(
+      response.data?.error ??
+        // No code: a chunk bigger than the server or a proxy accepts, even
+        // streamed (see uploadOnce)
+        (response.status === 413 ? "chunk-too-large" : "unknown"),
+    );
   return undefined;
 }
 
@@ -64,6 +78,10 @@ export class DepositUploader {
   private wakeUps = new Set<() => void>();
   private concurrency: number;
   private consecutiveStalls = 0;
+  private consecutiveSuccesses = 0;
+  // Chunks being sent, at most `concurrency`, retries included
+  private busySlots = 0;
+  private slotWaiters: (() => void)[] = [];
   private activeRequests = 0;
   private lastProgressAt = Date.now();
   private ticker?: ReturnType<typeof setInterval>;
@@ -72,6 +90,9 @@ export class DepositUploader {
     private session: DepositSession,
     private items: UploadItem[],
     private onProgress: (progress: UploadProgress) => void,
+    // Chunks sent with the streamed type (see uploadOnce); read after run()
+    // to keep it for the next round of the same deposit
+    public streamed = false,
   ) {
     this.concurrency = session.parallelUploads;
   }
@@ -89,9 +110,7 @@ export class DepositUploader {
     this.ticker = setInterval(() => this.emit(), 500);
     try {
       await Promise.all(
-        Array.from({ length: this.session.parallelUploads }, (_, n) =>
-          this.worker(n),
-        ),
+        Array.from({ length: this.session.parallelUploads }, () => this.worker()),
       );
     } finally {
       this.stop();
@@ -105,6 +124,7 @@ export class DepositUploader {
     window.removeEventListener("online", this.retryNow);
     clearInterval(this.ticker);
     this.retryNow();
+    this.slotWaiters.splice(0).forEach((wakeUp) => wakeUp());
   }
 
   /** Wakes up chunks waiting before a retry (e.g. the network is back). */
@@ -126,10 +146,22 @@ export class DepositUploader {
     });
   }
 
-  private async worker(n: number) {
+  /** Waits until fewer than `concurrency` chunks are being sent. */
+  private async takeSlot() {
+    while (this.busySlots >= this.concurrency && !this.stopped)
+      await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
+    this.busySlots++;
+  }
+
+  private releaseSlot() {
+    this.busySlots--;
+    this.slotWaiters.shift()?.();
+  }
+
+  // Every worker stays: on a very slow connection the slots (takeSlot) let
+  // fewer chunks go at once, and more again once it is better
+  private async worker() {
     while (!this.stopped) {
-      // Very slow connection: some workers stop to give the others more bandwidth
-      if (n >= this.concurrency) return;
       const job = this.queue.shift();
       if (!job) return;
       await this.uploadWithRetry(job.item, job.index);
@@ -142,8 +174,13 @@ export class DepositUploader {
       try {
         await this.uploadOnce(item, index);
         this.consecutiveStalls = 0;
+        this.chunkWentThrough();
         return;
       } catch (e) {
+        if (this.stopped) return;
+        // Refused by the server's body parser: sent again at once, streamed
+        if ((e as Error)?.name === "StreamedRetry") continue;
+        this.consecutiveSuccesses = 0;
         const fatal = toFatalError(e);
         if (fatal) {
           this.stopped = true;
@@ -168,6 +205,19 @@ export class DepositUploader {
     }
   }
 
+  /** After stalls, lets one more chunk go at once every few chunks in a row. */
+  private chunkWentThrough() {
+    if (this.concurrency >= this.session.parallelUploads) {
+      this.consecutiveSuccesses = 0;
+      return;
+    }
+    if (++this.consecutiveSuccesses < RECOVER_AFTER_CHUNKS) return;
+    this.consecutiveSuccesses = 0;
+    this.concurrency++;
+    // A chunk waiting for a slot can go now
+    this.slotWaiters.shift()?.();
+  }
+
   private async assertReadable(item: UploadItem, index: number) {
     const start = index * this.session.chunkSize;
     if (chunkLength(item.size, this.session.chunkSize, index) === 0) return;
@@ -180,6 +230,13 @@ export class DepositUploader {
   }
 
   private async uploadOnce(item: UploadItem, index: number) {
+    // Also limits the chunks being retried: after stalls, each chunk gets more
+    // bandwidth instead of all of them failing again
+    await this.takeSlot();
+    if (this.stopped) {
+      this.releaseSlot();
+      throw new Error("Upload stopped");
+    }
     const start = index * this.session.chunkSize;
     const length = chunkLength(item.size, this.session.chunkSize, index);
 
@@ -200,10 +257,13 @@ export class DepositUploader {
       }
     }, 5000);
 
+    const startedAt = Date.now();
+    const streamed = this.streamed;
     this.activeRequests++;
     try {
       await stundTransferService.uploadChunk(this.session, item.id, index, data, {
         signal: controller.signal,
+        streamed,
         onUploadProgress: (event) => {
           lastActivity = Date.now();
           this.lastProgressAt = lastActivity;
@@ -214,7 +274,29 @@ export class DepositUploader {
       this.confirmedBytes += length;
       this.lastProgressAt = Date.now();
     } catch (e) {
-      if (stalled) {
+      const response = (e as AxiosError<{ error?: string }>)?.response;
+      // 413 without a code: the server's body parser has a limit below this
+      // deposit's chunk size (setting lowered since it started). The streamed
+      // type does not go through it: this chunk and the next ones are sent
+      // that way. A streamed chunk refused too is fatal (toFatalError).
+      if (!streamed && response?.status === 413 && !response.data?.error) {
+        this.streamed = true;
+        const retryError = new Error("Send the chunk streamed");
+        retryError.name = "StreamedRetry";
+        throw retryError;
+      }
+      // A stall: no progress for 30 s, a 408 (time limit of the server), or
+      // the connection cut without any answer after sending for minutes (time
+      // limit of a proxy). An answer such as 502 is a normal retry, even on a
+      // long chunk: on a slow uplink every chunk takes minutes.
+      if (
+        stalled ||
+        response?.status === 408 ||
+        (isAxiosError(e) &&
+          !response &&
+          e.code !== AxiosError.ERR_CANCELED &&
+          Date.now() - startedAt > SLOW_CHUNK_MS)
+      ) {
         const stallError = new Error("Upload stalled");
         stallError.name = "StallError";
         throw stallError;
@@ -222,6 +304,7 @@ export class DepositUploader {
       throw e;
     } finally {
       clearInterval(watchdog);
+      this.releaseSlot();
       this.activeRequests--;
       this.controllers.delete(controller);
       this.inFlight.delete(key);
