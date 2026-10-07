@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { TbFolder, TbInbox, TbLink, TbPalette, TbRefresh, TbSend, TbSettings, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder, TbSend, TbPalette
+import { TbFolder, TbInbox, TbLink, TbPalette, TbRefresh, TbSend, TbSettings, TbShare, TbUsers } from "react-icons/tb"; // StundTransfer: TbInbox, TbFolder, TbSend, TbPalette, TbShare
 import { FormattedMessage } from "react-intl";
 import Meta from "../../components/Meta";
 import useTranslate from "../../hooks/useTranslate.hook";
@@ -50,6 +50,12 @@ const Admin = () => {
       title: t("stundtransfer.destination.title"),
       icon: TbFolder,
       route: "/admin/destination",
+    },
+    {
+      // StundTransfer: links to files already on the NAS
+      title: t("stundtransfer.nas.title"),
+      icon: TbShare,
+      route: "/admin/nas",
     },
     {
       title: t("stundtransfer.admin.send-files"),

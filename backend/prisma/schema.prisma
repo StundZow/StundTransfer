@@ -254,3 +254,17 @@ model StundDepositFile {
 
   @@unique([depositId, originalPath])
 }
+
+// StundTransfer: links to files already on the NAS (nothing copied), downloaded
+// over HTTPS through StundTransfer. Additive table, no relation to upstream models.
+model StundNasLink {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  // Secret part of the public link /d/<token>
+  token       String    @unique
+  // File relative to the mounted folder, e.g. "11 - RUSH VS/MC/POV/cam.mp4"
+  path        String
+  expiresAt   DateTime?
+  downloads   Int       @default(0)
+  createdById String?
+}

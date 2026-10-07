@@ -198,3 +198,10 @@ export async function findExistingFolderName(
     folderName
   );
 }
+
+/** "a/b/c" relative to the mounted folder, as checked segments (no "..", no hidden or DSM folders). */
+export function relativeParts(relative?: string): string[] {
+  const parts = (relative ?? "").split(/[\/]+/).filter((part) => part !== "" && part !== ".");
+  if (parts.some((part) => part === ".." || /^[.@#]/.test(part))) throw new Error("Invalid path");
+  return parts;
+}

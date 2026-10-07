@@ -192,6 +192,45 @@ const retryDeposit = async (id: string) =>
 const removeDeposit = async (id: string) =>
   api.delete(`stundtransfer/admin/deposits/${id}`);
 
+// Links to files already on the NAS
+
+export type NasListing = {
+  path: string;
+  folders: string[];
+  files: { name: string; size: number }[];
+};
+
+export type NasLink = {
+  id: string;
+  token: string;
+  path: string;
+  name: string;
+  // null: the file was moved or deleted since
+  size: number | null;
+  createdAt: string;
+  expiresAt: string | null;
+  downloads: number;
+};
+
+export type NasPublicLink = { name: string; size: number; expiresAt: string | null };
+
+const listNas = async (path: string): Promise<NasListing> =>
+  (await api.get("stundtransfer/admin/nas", { params: { path } })).data;
+
+const listNasLinks = async (): Promise<NasLink[]> =>
+  (await api.get("stundtransfer/admin/nas-links")).data;
+
+const createNasLink = async (path: string, expiresInDays?: number): Promise<NasLink> =>
+  (await api.post("stundtransfer/admin/nas-links", { path, expiresInDays })).data;
+
+const deleteNasLink = async (id: string) => api.delete(`stundtransfer/admin/nas-links/${id}`);
+
+const getNasLink = async (token: string): Promise<NasPublicLink> =>
+  (await api.get(`stundtransfer/nas/${token}`, { timeout: INFO_TIMEOUT_MS })).data;
+
+/** Plain link: the browser downloads it itself (resumable, no memory used). */
+export const nasDownloadUrl = (token: string) => `/api/stundtransfer/nas/${token}/download`;
+
 export default {
   getPublicInfo,
   getLink,
@@ -209,4 +248,9 @@ export default {
   getDepositDetails,
   retryDeposit,
   removeDeposit,
+  listNas,
+  listNasLinks,
+  createNasLink,
+  deleteNasLink,
+  getNasLink,
 };

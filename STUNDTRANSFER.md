@@ -23,6 +23,7 @@ Fork de [Pingvin Share X](https://github.com/smp46/pingvin-share-x) transformé 
 - Noms nettoyés (caractères interdits Windows/Synology, `..`, chemins absolus, espaces), arborescence des dossiers conservée, jamais d'écrasement de fichier (` (2)`, ` (3)`…), date de modification d'origine conservée.
 - **Dossier de réception** : Administration → Dossier de réception, un explorateur limité au dossier monté dans le conteneur (dossiers cachés, `#recycle` et `@eaDir` exclus). On peut y créer un dossier et le choisir.
 - Les envois abandonnés sont supprimés du dossier « en cours » après le délai choisi (3 jours par défaut).
+- **Partager depuis le NAS** (Administration → Partager depuis le NAS, admins seulement) : on parcourt le dossier monté, on choisit un fichier déjà sur le NAS et on crée un lien `…/d/<jeton>` (expiration au choix). La personne télécharge le fichier directement depuis le NAS par l'adresse publique (HTTPS 443), sans copie ; les téléchargements peuvent reprendre (requêtes HTTP Range). Le lien affiche le nombre de téléchargements ; un fichier déplacé ou supprimé est signalé.
 
 ## Réglages
 
@@ -150,15 +151,15 @@ Règles :
 
 ### Ce qui est modifié dans le code officiel
 
-Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `frontend/src/stundtransfer/`, `frontend/src/pages/depot.tsx`, `frontend/src/pages/account/deposits.tsx`, `frontend/src/pages/admin/destination.tsx`, `backend/scripts/stundtransfer-import-config-yaml.cjs`, `.github/README.md`, tests, workflow). Chaque ligne modifiée dans un fichier officiel est marquée `StundTransfer` :
+Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `frontend/src/stundtransfer/`, `frontend/src/pages/depot.tsx`, `frontend/src/pages/account/deposits.tsx`, `frontend/src/pages/admin/destination.tsx`, `frontend/src/pages/admin/nas.tsx`, `frontend/src/pages/d/[token].tsx`, `backend/scripts/stundtransfer-import-config-yaml.cjs`, `.github/README.md`, tests, workflow). Chaque ligne modifiée dans un fichier officiel est marquée `StundTransfer` :
 
 | Fichier | Modification |
 |---|---|
-| `backend/prisma/schema.prisma` | 2 tables ajoutées à la fin (`StundDeposit`, `StundDepositFile`) |
+| `backend/prisma/schema.prisma` | 3 tables ajoutées à la fin (`StundDeposit`, `StundDepositFile`, `StundNasLink`) |
 | `backend/src/app.module.ts` | Branche le module `StundTransferModule` |
 | `backend/package.json` | Script `test:stundtransfer` |
 | `frontend/src/pages/upload/[reverseShareToken].tsx` | Affiche la page de dépôt pour les liens de dépôt |
-| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins |
+| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins ; `/d/*` (liens vers le NAS) public |
 | `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; connecté sans partage classique : « Dépôts reçus » + profil |
 | `frontend/src/components/header/NavbarShareMenu.tsx` | Entrée « Dépôts reçus » |
 | `frontend/src/components/footer/Footer.tsx` | « Powered by » traduit |
@@ -167,7 +168,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/prisma/seed/config.seed.ts` | Sections de réglages `stundtransfer` et `stundtransferpaths` (ajoutées à la fin) |
 | `frontend/src/services/config.service.ts` | Autorise la section `stundtransfer` |
 | `frontend/src/components/admin/configuration/ConfigurationNavBar.tsx` | Entrée « StundTransfer » dans les paramètres |
-| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
+| `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Partager depuis le NAS », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
 | `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) |
 | `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage ; en mode dépôt, un lien de dépôt ne permet jamais de créer un partage classique |
 | `backend/src/reverseShare/reverseShare.controller.ts` | Seuls les admins créent des liens de dépôt |

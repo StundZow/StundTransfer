@@ -65,7 +65,7 @@ const CHECK_CONCURRENCY = 32;
 const OUT_OF_SPACE_CODES = new Set(["ENOSPC", "EDQUOT", "EFBIG"]);
 
 // Errors carry a stable "error" code the frontend translates.
-function stundError(
+export function stundError(
   status: HttpStatus,
   error: string,
   message: string,

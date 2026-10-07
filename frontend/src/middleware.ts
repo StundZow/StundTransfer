@@ -44,6 +44,7 @@ export async function middleware(request: NextRequest) {
       "/s/*",
       "/upload/*",
       "/depot", // StundTransfer
+      "/d/*", // StundTransfer: links to files on the NAS
       "/error",
       "/imprint",
       "/privacy",
