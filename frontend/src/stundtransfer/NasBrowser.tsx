@@ -90,8 +90,9 @@ const NasBrowser = ({
 
   return (
     <>
-      <Group position="apart" mb="sm" align="flex-end">
-        <Breadcrumbs separator="›" sx={{ flexWrap: "wrap" }}>
+      {/* The buttons stay at the right edge: a long path wraps on its own side */}
+      <Group position="apart" mb="sm" align="flex-end" noWrap>
+        <Breadcrumbs separator="›" sx={{ flexWrap: "wrap", flex: 1, minWidth: 0 }}>
           {[rootLabel, ...parts].map((name, i) => (
             <Anchor
               key={i}
@@ -103,7 +104,7 @@ const NasBrowser = ({
             </Anchor>
           ))}
         </Breadcrumbs>
-        <Group spacing="xs" align="flex-end">
+        <Group spacing="xs" align="flex-end" noWrap sx={{ flexShrink: 0 }}>
           <Select
             size="xs"
             w={190}
