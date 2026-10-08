@@ -15,7 +15,7 @@ import { useDisclosure } from "@mantine/hooks";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { ReactNode, useEffect, useState } from "react";
-import { TbChevronLeft } from "react-icons/tb";
+import { TbChevronLeft, TbShare, TbUpload } from "react-icons/tb"; // StundTransfer: TbShare, TbUpload
 import useConfig from "../../hooks/config.hook";
 import useUser from "../../hooks/user.hook";
 import useTranslate from "../../hooks/useTranslate.hook";
@@ -25,7 +25,7 @@ import ActionAvatar from "./ActionAvatar";
 import NavbarShareMenu from "./NavbarShareMenu";
 // StundTransfer: visitors only get a small sign-in icon
 import GuestSignInButton from "../../stundtransfer/GuestSignInButton";
-import NasShareButton from "../../stundtransfer/NasShareButton";
+import HeaderButton from "../../stundtransfer/HeaderButton";
 import {
   DEPOSITS_PAGE,
   isClassicSharingEnabled,
@@ -246,16 +246,28 @@ const Header = () => {
     authenticatedLinks = [depositsLink, { component: <ActionAvatar /> }];
     if (user) mobileRootLinks = [depositsLink, { label: t("common.button.profile") }];
   }
-  // StundTransfer: admins share NAS files from the header, right of "Dépôts reçus"
+  // StundTransfer: admins share from the header: "Partager" (files of this
+  // computer) and "Partager depuis le NAS". "Dépôts reçus" is then on the
+  // Administration page (and in the mobile menu).
   if (user?.isAdmin) {
-    authenticatedLinks.splice(authenticatedLinks.length - 1, 0, {
-      component: <NasShareButton />,
-    });
-    mobileRootLinks = [
-      mobileRootLinks[0],
-      { link: "/admin/nas", label: t("stundtransfer.nas.title") },
-      ...mobileRootLinks.slice(1),
-    ];
+    const shareLink = { link: "/upload", label: t("common.button.share") };
+    const nasLink = { link: "/admin/nas", label: t("stundtransfer.nas.title") };
+    const nasButton = {
+      component: <HeaderButton href={nasLink.link} icon={<TbShare size="1rem" />} label={nasLink.label} />,
+    };
+    if (isClassicSharingEnabled(config.get)) {
+      authenticatedLinks.splice(authenticatedLinks.length - 1, 0, nasButton);
+      mobileRootLinks = [mobileRootLinks[0], nasLink, ...mobileRootLinks.slice(1)];
+    } else {
+      authenticatedLinks = [
+        {
+          component: <HeaderButton href={shareLink.link} icon={<TbUpload size="1rem" />} label={shareLink.label} />,
+        },
+        nasButton,
+        { component: <ActionAvatar /> },
+      ];
+      mobileRootLinks = [shareLink, nasLink, ...mobileRootLinks];
+    }
   }
 
   const mobileShareLinks: NavLink[] = [

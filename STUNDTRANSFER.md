@@ -196,7 +196,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/package.json` | Script `test:stundtransfer` |
 | `frontend/src/pages/upload/[reverseShareToken].tsx` | Affiche la page de dépôt pour les liens de dépôt |
 | `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins ; `/d/*` (liens vers le NAS) public |
-| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; connecté sans partage classique : « Dépôts reçus » + profil ; admins : bouton « Partager depuis le NAS » (couleur du site) juste à droite (`stundtransfer/NasShareButton.tsx`) |
+| `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; admins sans partage classique : boutons « Partager » et « Partager depuis le NAS » (`stundtransfer/HeaderButton.tsx`), « Dépôts reçus » passe sur la page Administration et dans le menu mobile ; autres comptes : « Dépôts reçus » + profil |
 | `frontend/src/components/header/NavbarShareMenu.tsx` | Entrée « Dépôts reçus » |
 | `frontend/src/components/footer/Footer.tsx` | « Powered by » traduit |
 | `frontend/src/pages/account/reverseShares.tsx` | Bouton « Dépôts reçus » |
@@ -213,6 +213,9 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `Dockerfile`, `.github/workflows/stundtransfer-image.yml` | Commit et date de construction inscrits dans l'image (`STUNDTRANSFER_VERSION`, `STUNDTRANSFER_BUILT_AT`) pour la page « Mettre à jour » |
 | `scripts/docker/entrypoint.sh` | Copie de la base dans `data/backups-auto/` à chaque démarrage, avant les migrations (10 gardées) |
 | `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
+| `frontend/src/pages/upload/index.tsx` | Gros bouton « Partager » centré sous la zone de dépôt (au lieu du petit bouton en haut à droite) |
+| `frontend/src/components/upload/FileList.tsx` | Crayon pour renommer un fichier avant l'envoi, flèche ronde pour remettre le nom d'origine (`stundtransfer/RenamableFileName.tsx`, `renameUpload.ts`) |
+| `frontend/src/pages/share/[shareId]/index.tsx` | Même carte que les liens NAS : gros bouton de téléchargement (fichier ou .zip), fichiers avec taille et petite icône (`stundtransfer/ShareDownloadCard.tsx`, `DownloadParts.tsx`) |
 
 En cas de conflit lors d'une mise à jour : garder la version officielle du fichier, puis réappliquer ces quelques lignes.
 

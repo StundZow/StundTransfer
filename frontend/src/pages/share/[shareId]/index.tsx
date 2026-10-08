@@ -1,23 +1,13 @@
-import {
-  ActionIcon,
-  Box,
-  Button,
-  Center,
-  Group,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Button, Center, Stack, Text, Title } from "@mantine/core"; // StundTransfer
 import { useModals } from "@mantine/modals";
 import { GetServerSidePropsContext } from "next";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { FormattedMessage } from "react-intl";
-import { TbEdit, TbPlusMinus } from "react-icons/tb";
 import Meta from "../../../components/Meta";
-import DownloadAllButton from "../../../components/share/DownloadAllButton";
-import FileList from "../../../components/share/FileList";
+import CenterLoader from "../../../components/core/CenterLoader"; // StundTransfer
+import ShareDownloadCard from "../../../stundtransfer/ShareDownloadCard";
 import showEnterPasswordModal from "../../../components/share/showEnterPasswordModal";
 import showErrorModal from "../../../components/share/showErrorModal";
 import showShareInformationsModal from "../../../components/share/showShareInformationsModal";
@@ -27,9 +17,7 @@ import useUser from "../../../hooks/user.hook";
 import shareService from "../../../services/share.service";
 import { MyShare, Share as ShareType } from "../../../types/share.type";
 import toast from "../../../utils/toast.util";
-import { byteToHumanSizeString } from "../../../utils/fileSize.util";
 import { getQueryString } from "../../../utils/router.util";
-import { HoverTip } from "../../../components/core/HoverTip";
 
 export function getServerSideProps(context: GetServerSidePropsContext) {
   return {
@@ -194,64 +182,20 @@ const Share = ({ shareId }: { shareId: string }) => {
         description={t("share.description")}
       />
 
-      <Group position="apart" mb="lg">
-        <Box style={{ maxWidth: "70%" }}>
-          <Title order={3}>{share?.name || share?.id}</Title>
-          <Text size="sm">{share?.description}</Text>
-          {share?.files?.length > 0 && (
-            <Text size="sm" color="dimmed" mt={5}>
-              <FormattedMessage
-                id="share.fileCount"
-                values={{
-                  count: share?.files?.length || 0,
-                  size: byteToHumanSizeString(
-                    share?.files?.reduce(
-                      (total: number, file: { size: string }) =>
-                        total + parseInt(file.size),
-                      0,
-                    ) || 0,
-                  ),
-                }}
-              />
-            </Text>
-          )}
-        </Box>
-
-        <Group spacing="xs">
-          {isOwner && (
-            <HoverTip label={t("account.shares.button.edit")}>
-              <Link href={`/share/${shareId}/edit`}>
-                <ActionIcon variant="light" color="orange" size="lg">
-                  <TbPlusMinus />
-                </ActionIcon>
-              </Link>
-            </HoverTip>
-          )}
-          {isOwnerOrAdmin && (
-            <HoverTip label={t("common.button.edit")}>
-              <ActionIcon
-                variant="light"
-                color="blue"
-                size="lg"
-                onClick={handleEditClick}
-              >
-                <TbEdit />
-              </ActionIcon>
-            </HoverTip>
-          )}
-          {share?.files.length > 1 && (
-            <DownloadAllButton shareId={shareId} recipientId={recipientId} />
-          )}
-        </Group>
-      </Group>
-
-      <FileList
-        files={share?.files}
-        setShare={setShare}
-        share={share!}
-        isLoading={!share}
-        recipientId={recipientId}
-      />
+      {/* StundTransfer: same card as the NAS links, centred in the free
+          height of the screen (header and footer apart) */}
+      <Center py="xl" sx={{ minHeight: "calc(100vh - 11rem)" }}>
+        {share ? (
+          <ShareDownloadCard
+            share={share}
+            recipientId={recipientId}
+            canAddFiles={isOwner}
+            onEdit={isOwnerOrAdmin ? handleEditClick : undefined}
+          />
+        ) : (
+          <CenterLoader />
+        )}
+      </Center>
     </>
   );
 };

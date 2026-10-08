@@ -1,8 +1,7 @@
 import {
   Button,
   Center,
-  Group,
-  Space,
+  Space, // StundTransfer: Group no longer used
   Stack,
   Text,
   Title,
@@ -13,7 +12,7 @@ import { AxiosError } from "axios";
 import pLimit from "p-limit";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { TbShieldLock } from "react-icons/tb";
+import { TbShare, TbShieldLock } from "react-icons/tb"; // StundTransfer: TbShare
 import { FormattedMessage } from "react-intl";
 import Meta from "../../components/Meta";
 import Dropzone from "../../components/upload/Dropzone";
@@ -338,15 +337,6 @@ const Upload = ({
   return (
     <>
       <Meta title={t("upload.title")} />
-      <Group position="right" mb={20}>
-        <Button
-          loading={isUploading}
-          disabled={files.length <= 0}
-          onClick={() => showCreateUploadModalCallback(files)}
-        >
-          <FormattedMessage id="common.button.share" />
-        </Button>
-      </Group>
       <Dropzone
         title={
           !autoOpenCreateUploadModal && files.length > 0
@@ -358,6 +348,22 @@ const Upload = ({
         onFilesChanged={handleDropzoneFilesChanged}
         isUploading={isUploading}
       />
+      {/* StundTransfer: a big "Partager" button under the drop zone, once
+          there are files (it was small, top right) */}
+      {files.length > 0 && (
+        <Center mt="2.5rem" mb="lg">
+          <Button
+            size="xl"
+            radius="md"
+            miw="18rem"
+            leftIcon={<TbShare size="1.5rem" />}
+            loading={isUploading}
+            onClick={() => showCreateUploadModalCallback(files)}
+          >
+            <FormattedMessage id="common.button.share" />
+          </Button>
+        </Center>
+      )}
       {files.length > 0 && (
         <FileList<FileUpload> files={files} setFiles={setFiles} />
       )}

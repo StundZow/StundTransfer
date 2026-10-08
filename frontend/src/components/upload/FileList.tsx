@@ -2,7 +2,7 @@ import { ActionIcon, Table, Group } from "@mantine/core";
 import { useModals } from "@mantine/modals";
 import { TbTrash, TbEdit } from "react-icons/tb";
 import { GrUndo } from "react-icons/gr";
-import { FileListItem } from "../../types/File.type";
+import { FileListItem, FileUpload } from "../../types/File.type"; // StundTransfer: FileUpload
 import { byteToHumanSizeString } from "../../utils/fileSize.util";
 import UploadProgressIndicator from "./UploadProgressIndicator";
 import { FormattedMessage } from "react-intl";
@@ -10,6 +10,14 @@ import useTranslate from "../../hooks/useTranslate.hook";
 import { HoverTip } from "../core/HoverTip";
 import showTextEditorModal from "./modals/showTextEditorModal";
 import shareService from "../../services/share.service";
+// StundTransfer: pencil to rename a file before it is sent
+import RenamableFileName from "../../stundtransfer/RenamableFileName";
+import {
+  originalNameOf,
+  originalUpload,
+  renameUpload,
+} from "../../stundtransfer/renameUpload";
+import toast from "../../utils/toast.util";
 
 const renderFileName = (name: string) => {
   const parts = name.split("/");
@@ -37,11 +45,15 @@ const FileListRow = ({
   onRemove,
   onRestore,
   onEdit,
+  onRename,
+  onRevertName,
 }: {
   file: FileListItem;
   onRemove?: () => void;
   onRestore?: () => void;
   onEdit?: () => void;
+  onRename?: (name: string) => void; // StundTransfer
+  onRevertName?: () => void; // StundTransfer
 }) => {
   {
     const uploadable = "uploadingProgress" in file;
@@ -65,7 +77,19 @@ const FileListRow = ({
           textDecoration: deleted ? "line-through" : "none",
         }}
       >
-        <td>{renderFileName(fileNameOrPath)}</td>
+        <td>
+          {/* StundTransfer: renamable until it is sent */}
+          {uploadable && !uploading && onRename && onRevertName ? (
+            <RenamableFileName
+              path={fileNameOrPath}
+              originalName={originalNameOf(file)}
+              onRename={onRename}
+              onRevert={onRevertName}
+            />
+          ) : (
+            renderFileName(fileNameOrPath)
+          )}
+        </td>
         <td>{byteToHumanSizeString(+file.size)}</td>
         <td>
           <Group position="right" spacing="xs" noWrap>
@@ -154,6 +178,29 @@ const FileList = <T extends FileListItem = FileListItem>({
     showTextEditorModal(index, files, setFiles, text, modals);
   };
 
+  // StundTransfer: rename before sending (refused if another file has that name)
+  const t = useTranslate();
+  const replaceUpload = (index: number, file: FileUpload) => {
+    const path = getFileNameOrPath(file);
+    const taken = files.some(
+      (other, i) =>
+        i !== index &&
+        !("deleted" in other && other.deleted) &&
+        getFileNameOrPath(other) === path,
+    );
+    if (taken) {
+      toast.error(t("stundtransfer.files.duplicate", { name: path }));
+      return;
+    }
+    const updated = [...files];
+    updated[index] = file as unknown as T;
+    setFiles(updated);
+  };
+  const rename = (index: number, name: string) =>
+    replaceUpload(index, renameUpload(files[index] as FileUpload, name));
+  const revertName = (index: number) =>
+    replaceUpload(index, originalUpload(files[index] as FileUpload));
+
   const rows = files.map((file, i) => (
     <FileListRow
       key={i}
@@ -161,6 +208,8 @@ const FileList = <T extends FileListItem = FileListItem>({
       onRemove={() => remove(i)}
       onRestore={() => restore(i)}
       onEdit={() => edit(i)}
+      onRename={(name) => rename(i, name)}
+      onRevertName={() => revertName(i)}
     />
   ));
 
