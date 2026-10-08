@@ -27,6 +27,12 @@ import { NasFileDownload, NasShareService } from "./nasShare.service";
 // copy big downloads to a temporary file on the NAS
 const NO_PROXY_BUFFERING = { "X-Accel-Buffering": "no" };
 
+// Kinds the browser shows without running anything
+const isPassiveMedia = (type: string) =>
+  type.startsWith("video/") ||
+  type.startsWith("audio/") ||
+  (type.startsWith("image/") && type !== "image/svg+xml");
+
 @Controller("stundtransfer")
 export class NasShareController {
   private readonly logger = new Logger("StundTransfer");
@@ -79,10 +85,12 @@ export class NasShareController {
   async download(
     @Param("token") token: string,
     @Query("path") path: string | undefined,
+    @Query("preview") previewQuery: string | undefined,
     @Req() request: Request,
     @Res() response: Response,
   ) {
-    const download = await this.nasShare.openFile(token, path, request.headers.range);
+    const preview = previewQuery === "1";
+    const download = await this.nasShare.openFile(token, path, request.headers.range, preview);
     if (download.unsatisfiable) {
       response.status(416).set("Content-Range", `bytes */${download.size}`).end();
       return;
@@ -91,10 +99,14 @@ export class NasShareController {
       NasFileDownload,
       { unsatisfiable: false }
     >;
+    const type = mime.lookup(name) || "application/octet-stream";
     response.status(partial ? 206 : 200).set({
-      "Content-Type": mime.lookup(name) || "application/octet-stream",
+      // Preview: shown in the page (video, sound, picture or text), never as
+      // a web page of the site (sandbox, plain text for anything else)
+      "Content-Type": !preview || isPassiveMedia(type) ? type : "text/plain; charset=utf-8",
+      ...(preview ? { "Content-Security-Policy": "sandbox" } : {}),
       "Content-Length": String(size === 0 ? 0 : end - start + 1),
-      "Content-Disposition": contentDisposition(name),
+      "Content-Disposition": contentDisposition(name, preview ? { type: "inline" } : undefined),
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store",
       ...NO_PROXY_BUFFERING,

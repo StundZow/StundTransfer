@@ -23,6 +23,7 @@ import {
   TbAlertTriangle,
   TbArrowLeft,
   TbDownload,
+  TbEye,
   TbFile,
   TbFolder,
 } from "react-icons/tb";
@@ -35,17 +36,32 @@ import stundTransferService, {
   NasPublicLink,
   NasPublicListing,
   nasDownloadUrl,
+  nasPreviewUrl,
   nasZipUrl,
 } from "../../stundtransfer/stundtransfer.service";
 import toast from "../../utils/toast.util";
 import { DownloadRow as Row, badgeStyle } from "../../stundtransfer/DownloadParts";
+import {
+  PreviewButton,
+  PreviewFile,
+  PreviewModal,
+  previewKind,
+} from "../../stundtransfer/FilePreview";
 
 export function getServerSideProps(context: GetServerSidePropsContext) {
   return { props: { token: String(context.params?.token ?? "") } };
 }
 
 /** Content of a folder link: sub-folders (opened in place) then files, by name. */
-const FolderContent = ({ token, rootName }: { token: string; rootName: string }) => {
+const FolderContent = ({
+  token,
+  rootName,
+  onPreview,
+}: {
+  token: string;
+  rootName: string;
+  onPreview: (file: PreviewFile) => void;
+}) => {
   const t = useTranslate();
   const intl = useIntl();
   const [listing, setListing] = useState<NasPublicListing>();
@@ -128,15 +144,24 @@ const FolderContent = ({ token, rootName }: { token: string; rootName: string })
               />
             );
           })}
-          {sorted.files.map((file) => (
-            <Row
-              key={`f:${file.name}`}
-              icon={<TbFile size="1.2rem" />}
-              name={file.name}
-              size={size(file.size)}
-              href={nasDownloadUrl(token, [...parts, file.name].join("/"))}
-            />
-          ))}
+          {sorted.files.map((file) => {
+            const path = [...parts, file.name].join("/");
+            return (
+              <Row
+                key={`f:${file.name}`}
+                icon={<TbFile size="1.2rem" />}
+                name={file.name}
+                size={size(file.size)}
+                href={nasDownloadUrl(token, path)}
+                preview={
+                  <PreviewButton
+                    name={file.name}
+                    onClick={() => onPreview({ name: file.name, url: nasPreviewUrl(token, path) })}
+                  />
+                }
+              />
+            );
+          })}
         </Stack>
       )}
     </Box>
@@ -146,6 +171,7 @@ const FolderContent = ({ token, rootName }: { token: string; rootName: string })
 const DownloadCard = ({ token, link }: { token: string; link: NasPublicLink }) => {
   const t = useTranslate();
   const intl = useIntl();
+  const [preview, setPreview] = useState<PreviewFile>();
   return (
     <Paper withBorder shadow="md" radius="lg" w="100%" maw="48rem" sx={{ overflow: "hidden" }}>
       <Stack align="center" spacing="sm" px="xl" pt="2.5rem" pb="xl">
@@ -188,8 +214,21 @@ const DownloadCard = ({ token, link }: { token: string; link: NasPublicLink }) =
         >
           {t(link.folder ? "stundtransfer.nas.page.download-all" : "stundtransfer.nas.download")}
         </Button>
+        {!link.folder && previewKind(link.name) && (
+          <Button
+            variant="subtle"
+            color="gray"
+            leftIcon={<TbEye size="1.1rem" />}
+            onClick={() => setPreview({ name: link.name, url: nasPreviewUrl(token) })}
+          >
+            {t("stundtransfer.preview.open")}
+          </Button>
+        )}
       </Stack>
-      {link.folder && <FolderContent token={token} rootName={link.name} />}
+      {link.folder && (
+        <FolderContent token={token} rootName={link.name} onPreview={setPreview} />
+      )}
+      <PreviewModal file={preview} onClose={() => setPreview(undefined)} />
     </Paper>
   );
 };

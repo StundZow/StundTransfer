@@ -271,6 +271,9 @@ const requestUpdate = async (): Promise<UpdateStatus> =>
 /** Plain links: the browser downloads them itself (resumable files, no memory used). */
 export const nasDownloadUrl = (token: string, path?: string) =>
   `/api/stundtransfer/nas/${token}/download${withPath(path)}`;
+/** Same file, read in the page (eye): not counted as a download. */
+export const nasPreviewUrl = (token: string, path?: string) =>
+  `${nasDownloadUrl(token, path)}${path ? "&" : "?"}preview=1`;
 export const nasZipUrl = (token: string, path?: string) =>
   `/api/stundtransfer/nas/${token}/zip${withPath(path)}`;
 

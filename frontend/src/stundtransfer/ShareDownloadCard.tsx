@@ -16,13 +16,14 @@ import {
 } from "@mantine/core";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { TbDownload, TbEdit, TbFile, TbFiles, TbPlusMinus } from "react-icons/tb";
+import { TbDownload, TbEdit, TbEye, TbFile, TbFiles, TbPlusMinus } from "react-icons/tb";
 import { useIntl } from "react-intl";
 import useTranslate from "../hooks/useTranslate.hook";
 import shareService from "../services/share.service";
 import { Share } from "../types/share.type";
 import { formatSize } from "./depositFiles";
 import { DownloadRow, badgeStyle } from "./DownloadParts";
+import { PreviewButton, PreviewFile, PreviewModal, previewKind } from "./FilePreview";
 
 type ShareFile = { id: string; name: string; size: string };
 
@@ -44,6 +45,9 @@ const ShareDownloadCard = ({
   const files: ShareFile[] = share.files ?? [];
   const single = files.length === 1;
 
+  // Read in the page (eye): shown inline, not counted as a download
+  const previewUrl = (fileId: string) => `/api/shares/${share.id}/files/${fileId}?download=false`;
+  const [preview, setPreview] = useState<PreviewFile>();
   const url = (fileId: string) =>
     `/api/shares/${share.id}/files/${fileId}${
       recipientId ? `?recipient=${encodeURIComponent(recipientId)}` : ""
@@ -172,6 +176,16 @@ const ShareDownloadCard = ({
               {t("stundtransfer.share.page.zip-preparing")}
             </Button>
           ))}
+        {single && previewKind(files[0].name) && (
+          <Button
+            variant="subtle"
+            color="gray"
+            leftIcon={<TbEye size="1.1rem" />}
+            onClick={() => setPreview({ name: files[0].name, url: previewUrl(files[0].id) })}
+          >
+            {t("stundtransfer.preview.open")}
+          </Button>
+        )}
       </Stack>
       {!single && files.length > 0 && (
         <Stack
@@ -195,10 +209,17 @@ const ShareDownloadCard = ({
               name={file.name}
               size={formatSize(Number(file.size), intl.locale)}
               href={url(file.id)}
+              preview={
+                <PreviewButton
+                  name={file.name}
+                  onClick={() => setPreview({ name: file.name, url: previewUrl(file.id) })}
+                />
+              }
             />
           ))}
         </Stack>
       )}
+      <PreviewModal file={preview} onClose={() => setPreview(undefined)} />
     </Paper>
   );
 };

@@ -14,12 +14,15 @@ export const DownloadRow = ({
   size,
   href,
   onOpen,
+  preview,
 }: {
   icon: ReactNode;
   name: string;
   size: string;
   href: string;
   onOpen?: () => void;
+  // Eye to preview the file, right of its name
+  preview?: ReactNode;
 }) => {
   const t = useTranslate();
   const label = (
@@ -28,6 +31,7 @@ export const DownloadRow = ({
       <Text size="sm" truncate title={name}>
         {name}
       </Text>
+      {preview}
     </Group>
   );
   return (

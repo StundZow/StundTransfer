@@ -268,7 +268,13 @@ export class NasShareService {
   }
 
   /** Opens a file of a link, honouring a single "Range: bytes=start-end". */
-  async openFile(token: string, relative: string | undefined, range?: string): Promise<NasFileDownload> {
+  async openFile(
+    token: string,
+    relative: string | undefined,
+    range?: string,
+    // A preview (eye on the download page) is not a download
+    preview = false,
+  ): Promise<NasFileDownload> {
     const { link, inner } = await this.inside(token, relative);
     if (!inner.stats.isFile()) throw notFound();
     const size = inner.stats.size;
@@ -287,7 +293,7 @@ export class NasShareService {
       partial = true;
     }
     // Counted once per download, not for every resumed or parallel part
-    if (start === 0) await this.countDownload(link);
+    if (start === 0 && !preview) await this.countDownload(link);
     const stream =
       size === 0
         ? createReadStream(inner.absolute)
