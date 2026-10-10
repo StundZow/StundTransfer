@@ -213,8 +213,9 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `Dockerfile`, `.github/workflows/stundtransfer-image.yml` | Commit et date de construction inscrits dans l'image (`STUNDTRANSFER_VERSION`, `STUNDTRANSFER_BUILT_AT`) pour la page « Mettre à jour » |
 | `scripts/docker/entrypoint.sh` | Copie de la base dans `data/backups-auto/` à chaque démarrage, avant les migrations (10 gardées) |
 | `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
-| `frontend/src/pages/upload/index.tsx` | Gros bouton « Partager » centré sous la zone de dépôt (au lieu du petit bouton en haut à droite) |
+| `frontend/src/pages/upload/index.tsx` | Gros bouton « Partager » centré sous la zone de dépôt (au lieu du petit bouton en haut à droite) ; pendant l'envoi, la grande barre de la page de dépôt avec vitesse et temps restant pour tout (`stundtransfer/ShareUploadProgress.tsx`) |
 | `frontend/src/components/upload/FileList.tsx` | Crayon pour renommer un fichier avant l'envoi, flèche ronde pour remettre le nom d'origine (`stundtransfer/RenamableFileName.tsx`, `renameUpload.ts`) |
+| `frontend/src/components/upload/Dropzone.tsx` | Fichiers déposables n'importe où sur la page (`Dropzone.FullScreen`) |
 | `frontend/src/pages/share/[shareId]/index.tsx` | Même carte que les liens NAS : gros bouton de téléchargement (fichier ou .zip), fichiers avec taille et petite icône (`stundtransfer/ShareDownloadCard.tsx`, `DownloadParts.tsx`) |
 | `frontend/src/components/Meta.tsx` | Image d'aperçu des liens (WhatsApp, Discord…) : le logo en 512 px (`og:image`), au lieu de la petite icône floue |
 

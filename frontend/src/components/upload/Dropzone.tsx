@@ -5,6 +5,7 @@ import {
   Group,
   Text,
   Menu,
+  Stack, // StundTransfer
   useMantineColorScheme,
 } from "@mantine/core";
 import { Dropzone as MantineDropzone } from "@mantine/dropzone";
@@ -193,8 +194,49 @@ const Dropzone = ({
     event.target.value = "";
   };
 
+  // StundTransfer: same handling for the zone and for the whole page
+  const handleDrop = (files: FileUpload[]) => {
+    const fileSizeSum = files.reduce((n, { size }) => n + size, 0);
+
+    if (fileSizeSum + currentFilesSize > maxShareSize) {
+      toast.error(
+        t("upload.dropzone.notify.file-too-big", {
+          maxSize: byteToHumanSizeString(maxShareSize),
+        }),
+      );
+    } else {
+      files = files.map((newFile) => {
+        newFile.uploadingProgress = 0;
+        return newFile;
+      });
+      onFilesChanged(files);
+    }
+  };
+
   return (
     <div className={classes.wrapper}>
+      {/* StundTransfer: files can be dropped anywhere on the page */}
+      <MantineDropzone.FullScreen
+        active={!isUploading}
+        onDrop={handleDrop}
+        onReject={(e) => {
+          toast.error(e[0].errors[0].message);
+        }}
+        getFilesFromEvent={getFilesFromEvent}
+      >
+        <Stack
+          align="center"
+          justify="center"
+          spacing="md"
+          mih="calc(100vh - 4rem)"
+          sx={{ pointerEvents: "none" }}
+        >
+          <TbCloudUpload size={80} />
+          <Text size="xl" weight={700}>
+            {t("stundtransfer.drop.anywhere")}
+          </Text>
+        </Stack>
+      </MantineDropzone.FullScreen>
       <input
         type="file"
         ref={folderInputRef}
@@ -213,23 +255,7 @@ const Dropzone = ({
         disabled={isUploading}
         openRef={openRef as ForwardedRef<() => void>}
         getFilesFromEvent={getFilesFromEvent}
-        onDrop={(files: FileUpload[]) => {
-          const fileSizeSum = files.reduce((n, { size }) => n + size, 0);
-
-          if (fileSizeSum + currentFilesSize > maxShareSize) {
-            toast.error(
-              t("upload.dropzone.notify.file-too-big", {
-                maxSize: byteToHumanSizeString(maxShareSize),
-              }),
-            );
-          } else {
-            files = files.map((newFile) => {
-              newFile.uploadingProgress = 0;
-              return newFile;
-            });
-            onFilesChanged(files);
-          }
-        }}
+        onDrop={handleDrop}
         className={classes.dropzone}
         radius="md"
       >

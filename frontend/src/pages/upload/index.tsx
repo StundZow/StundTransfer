@@ -17,6 +17,7 @@ import { FormattedMessage } from "react-intl";
 import Meta from "../../components/Meta";
 import Dropzone from "../../components/upload/Dropzone";
 import FileList from "../../components/upload/FileList";
+import ShareUploadProgress from "../../stundtransfer/ShareUploadProgress"; // StundTransfer
 import showCompletedUploadModal from "../../components/upload/modals/showCompletedUploadModal";
 import showCreateUploadModal from "../../components/upload/modals/showCreateUploadModal";
 import useConfig from "../../hooks/config.hook";
@@ -349,15 +350,16 @@ const Upload = ({
         isUploading={isUploading}
       />
       {/* StundTransfer: a big "Partager" button under the drop zone, once
-          there are files (it was small, top right) */}
-      {files.length > 0 && (
+          there are files (it was small, top right); while sending, the big
+          progress bar of the deposit page, with the time left for everything */}
+      {isUploading && files.length > 0 && <ShareUploadProgress files={files} />}
+      {!isUploading && files.length > 0 && (
         <Center mt="2.5rem" mb="lg">
           <Button
             size="xl"
             radius="md"
             miw="18rem"
             leftIcon={<TbShare size="1.5rem" />}
-            loading={isUploading}
             onClick={() => showCreateUploadModalCallback(files)}
           >
             <FormattedMessage id="common.button.share" />
