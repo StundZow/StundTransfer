@@ -219,6 +219,15 @@ function App({ Component, pageProps }: AppProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // StundTransfer: the access token lasts a few minutes, the session is kept by
+  // the refresh token (sent only to the API). Coming back after a while, the
+  // page was shown signed out until the sign-in page renewed it: renew it at
+  // once, so the header shows the signed-in buttons.
+  useEffect(() => {
+    if (user || !getCookie("access_token")) return;
+    userService.getCurrentUser().then((current) => current && setUser(current));
+  }, []);
+
   useEffect(() => {
     if (!pageProps.language) return;
     const cookieLanguage = getCookie("language");

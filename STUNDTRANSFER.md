@@ -195,7 +195,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/src/app.module.ts` | Branche le module `StundTransferModule` |
 | `backend/package.json` | Script `test:stundtransfer` |
 | `frontend/src/pages/upload/[reverseShareToken].tsx` | Affiche la page de dépôt pour les liens de dépôt |
-| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins ; `/d/*` (liens vers le NAS) public |
+| `frontend/src/middleware.ts` | L'accueil affiche `/depot` (visiteurs, et comptes connectés sans partage classique) ; pages du partage classique réservées aux admins ; `/d/*` (liens vers le NAS) public ; jeton d'accès périmé sur une page de partage : passage par la connexion, qui renouvelle la session toute seule et revient |
 | `frontend/src/components/header/Header.tsx` | Visiteurs : icône de connexion seule (cachée si Paramètres → Général → « Afficher les boutons d'authentification » est désactivé) ; admins sans partage classique : boutons « Partager » et « Partager depuis le NAS » (`stundtransfer/HeaderButton.tsx`), « Dépôts reçus » passe sur la page Administration et dans le menu mobile ; autres comptes : « Dépôts reçus » + profil |
 | `frontend/src/components/header/NavbarShareMenu.tsx` | Entrée « Dépôts reçus » |
 | `frontend/src/components/footer/Footer.tsx` | « Powered by » traduit |
@@ -205,7 +205,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `frontend/src/services/config.service.ts` | Autorise la section `stundtransfer` |
 | `frontend/src/components/admin/configuration/ConfigurationNavBar.tsx` | Entrée « StundTransfer » dans les paramètres |
 | `frontend/src/pages/admin/index.tsx` | Cartes « Dépôts reçus », « Dossier de réception », « Partager depuis le NAS », « Envoyer des fichiers », « Mes liens de partage », « Couleurs et thème », « Mettre à jour » ; « Paramètres » ouvre la section StundTransfer ; carte « Mise à jour » renvoyée vers ce fichier |
-| `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) |
+| `frontend/src/pages/_app.tsx` | Interface un peu plus grande sur les grands écrans (`ResponsiveScale`) ; session renouvelée dès l'ouverture d'une page quand le jeton d'accès (quelques minutes) est périmé, pour que la barre du haut soit tout de suite celle d'un compte connecté |
 | `backend/src/share/guard/createShare.guard.ts` | Seuls les admins créent des liens de partage ; en mode dépôt, un lien de dépôt ne permet jamais de créer un partage classique |
 | `backend/src/reverseShare/reverseShare.controller.ts` | Seuls les admins créent des liens de dépôt |
 | `backend/src/main.ts` | `TRUST_PROXY=true` ne fait confiance qu'aux relais locaux (DSM, Caddy), pour que les limites anti-abus ne se contournent pas ; délai d'envoi d'une requête porté à 2 h (connexions lentes) ; taille max des morceaux jamais réduite pendant que le serveur tourne |

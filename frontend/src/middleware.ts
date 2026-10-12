@@ -85,9 +85,15 @@ export async function middleware(request: NextRequest) {
   // StundTransfer: sharing pages are for admins only (only they create links);
   // others go to the received deposits, visitors to the deposit page
   if (!user?.isAdmin && new Routes(CLASSIC_SHARING_ROUTES).contains(route)) {
-    const response = NextResponse.redirect(
-      new URL(user ? DEPOSITS_PAGE : "/", request.url),
-    );
+    // A session whose short access token ran out: the sign-in page renews it
+    // by itself and comes back here
+    const target =
+      !user && accessToken
+        ? `/auth/signIn?redirect=${encodeURIComponent(route)}`
+        : user
+          ? DEPOSITS_PAGE
+          : "/";
+    const response = NextResponse.redirect(new URL(target, request.url));
     response.headers.set("Vary", "x-nextjs-data");
     return response;
   }
