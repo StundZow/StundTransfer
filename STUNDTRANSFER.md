@@ -216,6 +216,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `frontend/src/pages/upload/index.tsx` | Gros bouton « Partager » centré sous la zone de dépôt (au lieu du petit bouton en haut à droite) ; pendant l'envoi, la grande barre de la page de dépôt avec vitesse et temps restant pour tout (`stundtransfer/ShareUploadProgress.tsx`) |
 | `frontend/src/components/upload/FileList.tsx` | Crayon pour renommer un fichier avant l'envoi, flèche ronde pour remettre le nom d'origine (`stundtransfer/RenamableFileName.tsx`, `renameUpload.ts`) |
 | `frontend/src/components/upload/Dropzone.tsx` | Fichiers déposables n'importe où sur la page (`Dropzone.FullScreen`) |
+| `frontend/src/components/upload/modals/showCompletedUploadModal.tsx` | Le lien du partage est copié tout seul (ou dès que la page revient au premier plan, après un long envoi) — `stundtransfer/clipboard.ts` |
 | `frontend/src/pages/share/[shareId]/index.tsx` | Même carte que les liens NAS : gros bouton de téléchargement (fichier ou .zip), fichiers avec taille et petite icône (`stundtransfer/ShareDownloadCard.tsx`, `DownloadParts.tsx`) |
 | `frontend/src/components/Meta.tsx` | Image d'aperçu des liens (WhatsApp, Discord…) : le logo en 512 px (`og:image`), au lieu de la petite icône floue |
 

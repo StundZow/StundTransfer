@@ -1,7 +1,7 @@
 import { Button, Stack, Text, Collapse } from "@mantine/core";
 import { useModals } from "@mantine/modals";
 import { ModalsContextProps } from "@mantine/modals/lib/context";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { FormattedMessage } from "react-intl";
@@ -11,6 +11,8 @@ import useTranslate, {
 import { CompletedShare } from "../../../types/share.type";
 import CopyTextField from "../CopyTextField";
 import QRCode from "../../share/QRCode";
+import { copyWhenPossible } from "../../../stundtransfer/clipboard"; // StundTransfer
+import toast from "../../../utils/toast.util";
 
 const showCompletedUploadModal = (
   modals: ModalsContextProps,
@@ -52,6 +54,13 @@ const Body = ({
   const isReverseShare = !!router.query["reverseShareToken"];
 
   const link = `${appUrl !== defaultAppUrl ? appUrl : window.location.origin}/s/${share.id}`;
+
+  // StundTransfer: the link is copied at once (or as soon as the page is back
+  // in front, after a long upload done in the background)
+  useEffect(
+    () => copyWhenPossible(link, () => toast.success(t("stundtransfer.nas.copied"))),
+    [link],
+  );
 
   return (
     <Stack align="stretch">

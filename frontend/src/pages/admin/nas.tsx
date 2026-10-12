@@ -31,11 +31,14 @@ import stundTransferService, {
   NasListing,
 } from "../../stundtransfer/stundtransfer.service";
 import toast from "../../utils/toast.util";
+import useConfig from "../../hooks/config.hook";
+import { copyText, publicAppUrl } from "../../stundtransfer/clipboard";
 
 const EXPIRY_CHOICES = ["", "7", "30", "90"];
 
 const NasSharePage = () => {
   const t = useTranslate();
+  const config = useConfig();
   const intl = useIntl();
   const [rootName, setRootName] = useState<string>();
   const [listing, setListing] = useState<NasListing>();
@@ -58,12 +61,10 @@ const NasSharePage = () => {
     refreshLinks();
   }, []);
 
-  const linkUrl = (link: NasLink) => `${window.location.origin}/d/${link.token}`;
+  // The public address, even when this page is opened on the local one
+  const linkUrl = (link: NasLink) => `${publicAppUrl(config.get)}/d/${link.token}`;
   const copy = (link: NasLink, message = t("stundtransfer.nas.copied")) =>
-    navigator.clipboard
-      .writeText(linkUrl(link))
-      .then(() => toast.success(message))
-      .catch(() => toast.success(linkUrl(link)));
+    copyText(linkUrl(link)).then((copied) => toast.success(copied ? message : linkUrl(link)));
 
   // `path`: file or folder relative to the mounted folder
   const create = (path: string) =>
