@@ -16,7 +16,7 @@ Guide pas à pas, sans code, pour un NAS Synology comme le **DS225+**. Compte en
 - **DSM 7.2** ou plus récent.
 - Un **compte administrateur** DSM.
 - Un **dossier partagé pour tes rushs**. Dans ce guide, il s'appelle `Rushs` : remplace par le nom du tien.
-- L'accès à ta **box internet**, pour rendre le site visible depuis l'extérieur (étape 9).
+- L'accès à ta **box internet**, pour rendre le site visible depuis l'extérieur (étape 8).
 
 > 💡 Dans ce guide, tout ce qui est écrit `COMME_CECI` est à remplacer par ta propre valeur.
 
@@ -61,37 +61,17 @@ Tu dois obtenir `docker/stundtransfer/data/images`.
 
 ---
 
-## Étape 4 — Trouver le numéro de l'utilisateur `stundtransfer`
-
-L'appli a besoin du numéro interne du compte créé à l'étape 2. On le récupère avec une petite tâche, sans rien installer.
-
-1. **Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l'utilisateur**.
-2. Onglet **Général** : nom `numero stundtransfer`, utilisateur **root**.
-3. Onglet **Programmer** : n'importe quelle date, une seule fois.
-4. Onglet **Paramètres de tâche**, dans « Script défini par l'utilisateur », colle :
-
-   ```sh
-   id stundtransfer > /volume1/docker/stundtransfer/numero.txt
-   ```
-
-5. **OK**, puis sélectionne la tâche et clique sur **Exécuter**.
-6. Dans File Station, ouvre `docker/stundtransfer/numero.txt`. Tu y lis par exemple `uid=1031(stundtransfer) …`.
-7. **Ton numéro, c'est le nombre après `uid=`**, ici `1031`. Note-le.
-8. Supprime la tâche et le fichier `numero.txt`, ils ne servent plus.
-
----
-
-## Étape 5 — Inventer le mot de passe de l'assistant de mise à jour
+## Étape 4 — Inventer le mot de passe de l'assistant de mise à jour
 
 Le bouton « Mettre à jour » utilise un petit assistant, protégé par un mot de passe que seul StundTransfer connaît.
 
 Invente un mot de passe **long** (au moins 30 caractères), avec seulement des **lettres et des chiffres**, sans espace ni symbole. Par exemple, prends-en un dans un générateur de mots de passe.
 
-Note-le juste le temps de l'étape 6. Tu n'auras plus jamais à le taper.
+Note-le juste le temps de l'étape 5. Tu n'auras plus jamais à le taper.
 
 ---
 
-## Étape 6 — Créer le projet dans Container Manager
+## Étape 5 — Créer le projet dans Container Manager
 
 1. **Container Manager → Projet → Créer**.
 2. Nom du projet : `stundtransfer`.
@@ -108,9 +88,8 @@ services:
       - 3000:3000
     environment:
       - TRUST_PROXY=true
-      # Numéro trouvé à l'étape 4, deux fois (jamais 100)
-      - PUID=TON_NUMERO
-      - PGID=TON_NUMERO
+      # Le compte DSM de l'étape 2 : l'appli trouve son numéro toute seule
+      - STUNDTRANSFER_RUN_AS=stundtransfer
       # Ton dossier de rushs, tel que l'appli le voit
       - STUNDTRANSFER_ROOT_DIR=/nas
       - STUNDTRANSFER_ROOT_NAME=Rushs
@@ -122,6 +101,8 @@ services:
       - /volume1/docker/stundtransfer/data:/opt/app/backend/data
       - /volume1/docker/stundtransfer/data/images:/opt/app/frontend/public/img
       - "/volume1/Rushs:/nas"
+      # Liste des comptes du NAS, en lecture seule (noms et numéros, aucun mot de passe)
+      - /etc/passwd:/etc/nas-passwd:ro
     labels:
       # Le seul conteneur que l'assistant a le droit de mettre à jour
       - com.centurylinklabs.watchtower.enable=true
@@ -146,8 +127,7 @@ services:
 
 | Dans le texte | Remplace par |
 |---|---|
-| `TON_NUMERO` (2 fois) | le numéro de l'étape 4, ex. `1031` |
-| `TON_MOT_DE_PASSE_DE_MISE_A_JOUR` (2 fois) | le mot de passe de l'étape 5, **identique aux deux endroits** |
+| `TON_MOT_DE_PASSE_DE_MISE_A_JOUR` (2 fois) | le mot de passe de l'étape 4, **identique aux deux endroits** |
 | `/volume1/Rushs` | le chemin de ton dossier de rushs (garde les guillemets s'il y a des espaces dans le nom) |
 | `STUNDTRANSFER_ROOT_NAME=Rushs` | le nom de ton dossier, tel que tu veux le voir dans l'appli |
 
@@ -160,7 +140,7 @@ Le NAS télécharge l'appli. Ça prend quelques minutes la première fois. Quand
 
 ---
 
-## Étape 7 — Créer ton compte administrateur
+## Étape 6 — Créer ton compte administrateur
 
 1. Trouve l'adresse locale de ton NAS : **Panneau de configuration → Réseau → Interface réseau**, par exemple `192.168.1.20`.
 2. Sur un PC de la maison, ouvre `http://ADRESSE_DU_NAS:3000/auth/signUp`.
@@ -171,7 +151,7 @@ Le NAS télécharge l'appli. Ça prend quelques minutes la première fois. Quand
 
 ---
 
-## Étape 8 — Régler l'appli
+## Étape 7 — Régler l'appli
 
 Tout se fait dans **Administration**, sans jamais redémarrer :
 
@@ -182,16 +162,16 @@ Tout se fait dans **Administration**, sans jamais redémarrer :
 
 ---
 
-## Étape 9 — Rendre le site accessible depuis internet
+## Étape 8 — Rendre le site accessible depuis internet
 
-### 9.1 Une adresse et un certificat (gratuits)
+### 8.1 Une adresse et un certificat (gratuits)
 
 1. **Panneau de configuration → Accès externe → DDNS → Ajouter**.
 2. Fournisseur : **Synology**. Nom d'hôte : choisis-en un, par exemple `TONNOM.synology.me`.
 3. Coche **Obtenir un certificat de Let's Encrypt et le définir par défaut**.
 4. **OK**.
 
-### 9.2 Le proxy inversé : relier l'adresse à l'appli
+### 8.2 Le proxy inversé : relier l'adresse à l'appli
 
 1. **Panneau de configuration → Portail de connexion → Avancé → Proxy inversé → Créer**.
 2. Nom : `StundTransfer`.
@@ -199,7 +179,7 @@ Tout se fait dans **Administration**, sans jamais redémarrer :
 4. **Destination** : protocole **HTTP**, nom d'hôte `localhost`, port **3000**.
 5. **Enregistrer**.
 
-### 9.3 Ouvrir le port sur la box
+### 8.3 Ouvrir le port sur la box
 
 Dans l'interface de ta box internet (Livebox, Freebox…), crée une **redirection de port** :
 
@@ -211,7 +191,7 @@ Si tu as **deux routeurs** (par exemple une box plus un système Wi-Fi comme eer
 
 > 💡 Si DSM n'arrive pas à créer ou renouveler le certificat, ajoute aussi une redirection du port **80** vers le NAS.
 
-### 9.4 Vérifier
+### 8.4 Vérifier
 
 1. Sur ton téléphone, **en 4G/5G** (Wi-Fi coupé), ouvre `https://TONNOM.synology.me`. La page d'envoi doit s'afficher avec le cadenas.
 2. Dans **Administration → Paramètres → Général → URL de l'appli**, mets `https://TONNOM.synology.me` et enregistre. C'est cette adresse qui sera utilisée dans les liens que tu partages.
@@ -263,7 +243,7 @@ Depuis un PC de la maison, ouvre `http://ADRESSE_DU_NAS:3000` au lieu de l'adres
 
 ## Les règles de sécurité
 
-- 🔒 Les inscriptions restent **désactivées** (étape 7).
+- 🔒 Les inscriptions restent **désactivées** (étape 6).
 - 🔒 Ne donne **jamais** l'accès « Everyone » / « Tout le monde » au dossier des rushs.
 - 🔒 N'ouvre **jamais** le port **3000** sur ta box.
 - 🔒 N'utilise **jamais** l'image officielle `smp46/pingvin-share-x` à la place de `ghcr.io/stundzow/stundtransfer` : elle efface tous les réglages StundTransfer.
@@ -275,9 +255,10 @@ Depuis un PC de la maison, ouvre `http://ADRESSE_DU_NAS:3000` au lieu de l'adres
 | Ce que tu vois | Ce qu'il faut faire |
 |---|---|
 | Container Manager dit qu'un chemin n'existe pas | Crée les dossiers de l'étape 3, et vérifie `volume1` / `volume2` et le nom du dossier de rushs |
+| `NAS account "stundtransfer" not found` dans le journal | Le compte de l'étape 2 doit s'appeler exactement `stundtransfer`, et la ligne `/etc/passwd:/etc/nas-passwd:ro` doit être dans le projet |
 | `Deposit folders are not usable` dans le journal | Donne **Lecture/Écriture** à `stundtransfer` sur le dossier de rushs et sur `docker` (étape 2), puis redémarre le projet |
 | Les dépôts échouent avec « droits » ou « permission » | Même chose : les droits de l'utilisateur `stundtransfer` |
-| Le site ne s'ouvre pas depuis l'extérieur | Teste d'abord `http://ADRESSE_DU_NAS:3000` à la maison. Si ça marche, vérifie le proxy inversé (9.2) puis les redirections de port (9.3) |
+| Le site ne s'ouvre pas depuis l'extérieur | Teste d'abord `http://ADRESSE_DU_NAS:3000` à la maison. Si ça marche, vérifie le proxy inversé (8.2) puis les redirections de port (8.3) |
 | « Mettre à jour » dit que l'assistant ne répond pas | Vérifie que `stundtransfer-updater` est en vert dans Container Manager, et que le mot de passe est **identique** aux deux endroits du projet |
 | N'importe qui peut créer un compte | Administration → Paramètres → Sécurité & Accès → décoche « Autoriser les inscriptions » |
 

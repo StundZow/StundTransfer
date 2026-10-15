@@ -51,6 +51,7 @@ La taille des morceaux (**Paramètres → Partage**, 20 Mo sur le NAS) peut se b
 |---|---|---|
 | `STUNDTRANSFER_ROOT_DIR` (ancien nom : `STUNDTRANSFER_TRANSFER_DIR`) | *(vide = mode dépôt désactivé)* | Dossier du NAS monté dans le conteneur. Le dossier de réception se choisit **dedans**, depuis l'admin (par défaut : lui-même) |
 | `STUNDTRANSFER_ROOT_NAME` | nom du dossier monté | Nom affiché dans l'admin (ex. `A - STUND - NAS`) |
+| `STUNDTRANSFER_RUN_AS` | *(vide)* | Nom du compte DSM sous lequel l'appli tourne (ex. `stundtransfer`), à la place de `PUID`/`PGID` : le numéro est lu dans la liste des comptes du NAS, montée en lecture seule (`/etc/passwd:/etc/nas-passwd:ro`). `PUID`/`PGID`, s'ils sont mis, restent prioritaires |
 | `STUNDTRANSFER_STAGING_DIR` | `.stundtransfer-en-cours` dans le dossier monté | Envois en cours. Doit être dans le même dossier partagé Synology que la réception pour un rangement instantané |
 
 Le conteneur lit et écrit avec le compte DSM indiqué par `PUID`/`PGID` (voir « Droits Synology ») : il n'a accès qu'aux dossiers autorisés pour ce compte.
@@ -213,6 +214,7 @@ Tout le reste est dans des fichiers à nous (`backend/src/stundtransfer/`, `fron
 | `backend/src/main.ts` | `TRUST_PROXY=true` ne fait confiance qu'aux relais locaux (DSM, Caddy), pour que les limites anti-abus ne se contournent pas ; délai d'envoi d'une requête porté à 2 h (connexions lentes) ; taille max des morceaux jamais réduite pendant que le serveur tourne |
 | `frontend/src/pages/auth/signIn.tsx`, `frontend/src/utils/router.util.ts` | Redirection après connexion limitée aux pages du site (faille `?redirect=javascript:` de Pingvin) |
 | `Dockerfile`, `.github/workflows/stundtransfer-image.yml` | Commit et date de construction inscrits dans l'image (`STUNDTRANSFER_VERSION`, `STUNDTRANSFER_BUILT_AT`) pour la page « Mettre à jour » |
+| `scripts/docker/create-user.sh` | `STUNDTRANSFER_RUN_AS` : compte DSM donné par son nom (numéro lu dans `/etc/nas-passwd`) |
 | `scripts/docker/entrypoint.sh` | Copie de la base dans `data/backups-auto/` à chaque démarrage, avant les migrations (10 gardées) |
 | `reverse-proxy/Caddyfile`, `reverse-proxy/Caddyfile.trust-proxy` | En-têtes de sécurité (HSTS, anti-iframe, nosniff, referrer). Effet de HSTS : les navigateurs forcent le HTTPS sur tous les ports de l'adresse publique pendant un an, donc DSM s'ouvre en `https://<adresse>:5001` (plus en `http://…:5000`) |
 | `frontend/src/pages/upload/index.tsx` | Gros bouton « Partager » centré sous la zone de dépôt (au lieu du petit bouton en haut à droite) ; pendant l'envoi, la grande barre de la page de dépôt avec vitesse et temps restant pour tout (`stundtransfer/ShareUploadProgress.tsx`) |

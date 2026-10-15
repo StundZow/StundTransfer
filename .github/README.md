@@ -47,7 +47,7 @@ Le guide technique complet (réglages, droits, revenir à une ancienne version) 
 
 ## Mettre à jour
 
-**Administration → Mettre à jour → Mettre à jour maintenant** : la nouvelle version s'installe en un clic (voir le guide d'installation, étape 6).
+**Administration → Mettre à jour → Mettre à jour maintenant** : la nouvelle version s'installe en un clic (déjà branché si tu as suivi le guide d'installation).
 
 ## Basé sur Pingvin Share X
 
