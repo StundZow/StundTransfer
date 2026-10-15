@@ -128,8 +128,8 @@ services:
 | Dans le texte | Remplace par |
 |---|---|
 | `TON_MOT_DE_PASSE_DE_MISE_A_JOUR` (2 fois) | le mot de passe de l'étape 4, **identique aux deux endroits** |
-| `/volume1/Rushs` | le chemin de ton dossier de rushs (garde les guillemets s'il y a des espaces dans le nom) |
-| `STUNDTRANSFER_ROOT_NAME=Rushs` | le nom de ton dossier, tel que tu veux le voir dans l'appli |
+| `/volume1/Rushs` | **où se trouve** ton dossier de rushs sur le NAS : c'est le seul dossier que l'appli pourra utiliser (les dépôts y arrivent, et « Partager depuis le NAS » choisit dedans). Pour le trouver : File Station → clic droit sur le dossier → **Propriétés** → **Emplacement**. Exemple : un dossier « Mes Rushs » donne `"/volume1/Mes Rushs:/nas"`. Garde les guillemets, et ne change jamais la fin `:/nas` |
+| `STUNDTRANSFER_ROOT_NAME=Rushs` | juste **le nom affiché** pour ce dossier dans l'appli (en haut de « Partager depuis le NAS » et de « Dossier de réception »). Ça ne change rien au fonctionnement : mets le nom de ton dossier, ex. `STUNDTRANSFER_ROOT_NAME=Mes Rushs` |
 
 5. Clique sur **Suivant**. À l'écran « Portail web » (Web Station), **ne coche rien**.
 6. Coche **Démarrer le projet une fois créé**, puis **Terminé**.
