@@ -164,6 +164,8 @@ Tout se fait dans **Administration**, sans jamais redémarrer :
 
 ## Étape 8 — Rendre le site accessible depuis internet
 
+> ⚠️ **Ouvre le port sur la box (8.3) seulement après l'étape 6.** Avant, le site n'a pas d'administrateur et les inscriptions sont ouvertes : le premier venu qui trouve la page deviendrait administrateur. Des robots testent les nouveaux sites dès que leur certificat est créé. Les parties 8.1 et 8.2 peuvent se faire avant.
+
 ### 8.1 Une adresse et un certificat (gratuits)
 
 1. **Panneau de configuration → Accès externe → DDNS → Ajouter**.
