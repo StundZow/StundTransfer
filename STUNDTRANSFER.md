@@ -101,6 +101,8 @@ Au démarrage, le journal du conteneur indique `Deposit mode enabled` si tout es
 
 ## Nouvelle installation (autre NAS)
 
+Guide pas à pas pour débutant (avec le bouton « Mettre à jour » déjà branché) : [INSTALLATION.md](INSTALLATION.md). Résumé technique :
+
 1. Le NAS doit avoir un processeur **Intel/AMD** (Synology « + », ex. DS224+, DS225+, DS423+). Les modèles ARM (DS223, DS220j…) ne sont pas pris en charge.
 2. Crée le compte DSM dédié (voir « Droits Synology ») et un dossier pour les données de l'appli, ex. `docker/stundtransfer`.
 3. Container Manager → **Projet** → **Créer**, colle le `compose.yaml` ci-dessus en adaptant les chemins de gauche (`/volume1/docker/pingvin` → ton dossier de données, `/volume1/A - STUND - NAS` → ton dossier partagé de rushs), `PUID`/`PGID` et `STUNDTRANSFER_ROOT_NAME` à ton NAS. `STUNDTRANSFER_STAGING_DIR` peut être retiré (par défaut : `.stundtransfer-en-cours` à la racine du dossier monté).
