@@ -41,38 +41,13 @@ flowchart LR
 
 Pour un NAS **Synology à processeur Intel ou AMD** (gamme « + » : DS224+, DS225+, DS423+…) avec **Container Manager**.
 
-1. **Crée un utilisateur DSM dédié** (ex. `stundtransfer`) avec Lecture/Écriture uniquement sur le dossier partagé des rushs et sur `docker`. Note son numéro avec `id stundtransfer` en SSH.
-2. **Crée le dossier** `docker/stundtransfer`.
-3. **Container Manager → Projet → Créer**, avec ce `compose.yaml` (adapte les chemins de gauche et le numéro) :
+👉 **[Guide d'installation pas à pas](https://github.com/StundZow/StundTransfer/blob/stundtransfer/INSTALLATION.md)** : sans code, environ 45 minutes, de l'utilisateur DSM dédié jusqu'à l'accès depuis internet.
 
-   ```yaml
-   services:
-     stundtransfer:
-       image: ghcr.io/stundzow/stundtransfer:latest
-       container_name: stundtransfer
-       restart: unless-stopped
-       ports:
-         - 3000:3000
-       environment:
-         - TRUST_PROXY=true
-         - PUID=1031   # numéro de l'utilisateur dédié
-         - PGID=1031   # le même numéro (pas 100)
-         - STUNDTRANSFER_ROOT_DIR=/nas
-       volumes:
-         - /volume1/docker/stundtransfer/data:/opt/app/backend/data
-         - /volume1/docker/stundtransfer/data/images:/opt/app/frontend/public/img
-         - /volume1/Rushs:/nas   # ton dossier partagé des rushs
-   ```
-
-4. **Ouvre** `http://<ip-du-nas>:3000/auth/signUp` : le premier compte créé est administrateur.
-5. **Administration → Paramètres** : désactive les inscriptions (Sécurité & Accès), puis active le **Dépôt public** (StundTransfer). Choisis le dossier de réception dans **Administration → Dossier de réception**.
-6. **Accès depuis internet** : adresse DDNS, certificat Let's Encrypt et proxy inversé DSM (HTTPS 443 → `localhost:3000`). N'ouvre jamais le port 3000 sur ta box.
-
-Le guide complet (réglages, droits, mises à jour) est dans [STUNDTRANSFER.md](https://github.com/StundZow/StundTransfer/blob/stundtransfer/STUNDTRANSFER.md).
+Le guide technique complet (réglages, droits, revenir à une ancienne version) est dans [STUNDTRANSFER.md](https://github.com/StundZow/StundTransfer/blob/stundtransfer/STUNDTRANSFER.md).
 
 ## Mettre à jour
 
-Container Manager → **Projet** → **Arrêter** puis **Nettoyer** → **Image** : supprime `ghcr.io/stundzow/stundtransfer` → **Projet** → **Construire**.
+**Administration → Mettre à jour → Mettre à jour maintenant** : la nouvelle version s'installe en un clic (voir le guide d'installation, étape 6).
 
 ## Basé sur Pingvin Share X
 
