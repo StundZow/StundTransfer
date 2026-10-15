@@ -160,6 +160,19 @@ Tout se fait dans **Administration**, sans jamais redémarrer :
 - **Paramètres → StundTransfer** : active **Dépôt public** pour que la page d'accueil accepte les envois sans compte. C'est aussi là que se règlent la taille maximale et l'espace à garder libre.
 - **Dossier de réception** : choisis dans quel dossier de `Rushs` arrivent les dépôts. Chaque dépôt crée un dossier « Nom - Vidéo ».
 
+**Réglages recommandés** (ceux de l'installation d'origine), dans **Paramètres** :
+
+| Où | Réglage | Mets | Pourquoi |
+|---|---|---|---|
+| Partage | Taille max | `500000000000` | Par défaut, « Partager » est limité à **1 Go** au total. Ici : 500 Go |
+| Partage | Niveau de compression | `0` | Les vidéos ne se compressent presque pas : à 9 (défaut), les .zip sont très lents à préparer |
+| Partage | Taille des tronçons | `20000000` | Morceaux de 20 Mo : envois vers le NAS un peu plus rapides |
+| Partage | Expiration par défaut | 14 jours | Au choix |
+| Partage | Taille de l'identifiant généré | `12` | Liens plus longs, impossibles à deviner |
+| Général | Langue par défaut | Français | Pour les visiteurs |
+| Général | Afficher la page d'accueil | désactivé | — |
+| Identifiant social | Autoriser l'inscription | désactivé | 🔒 Même raison que l'étape 6 |
+
 ---
 
 ## Étape 8 — Rendre le site accessible depuis internet
