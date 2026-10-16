@@ -92,6 +92,14 @@ services:
       - "/volume1/A - STUND - NAS:/nas"
 ```
 
+**Un autre disque dans « Partager depuis le NAS »** (ex. un SSD sur un autre volume ou en USB) : monte-le **en lecture seule** à l'intérieur du dossier monté, il apparaît comme un sous-dossier :
+
+```yaml
+      - "/volumeUSB1/usbshare:/nas/SSD:ro"
+```
+
+Le compte `stundtransfer` doit avoir au moins la lecture sur ce dossier partagé. Docker crée un dossier vide `SSD` dans le dossier monté (le point d'entrée) : ne pas le supprimer. Un disque USB débranché puis rebranché n'est revu qu'après un redémarrage du projet.
+
 **Droits Synology** : le conteneur tourne avec un **compte DSM dédié**, il a donc exactement les droits de ce compte.
 
 1. Panneau de configuration → Utilisateur et groupe → **Créer** `stundtransfer` : Lecture/Écriture sur le dossier partagé des rushs et sur `docker`, aucun accès ailleurs, aucune application.
