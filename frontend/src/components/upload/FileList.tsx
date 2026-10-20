@@ -18,6 +18,8 @@ import {
   renameUpload,
 } from "../../stundtransfer/renameUpload";
 import toast from "../../utils/toast.util";
+import { PreviewFile, PreviewModal } from "../../stundtransfer/FilePreview";
+import { useState } from "react";
 
 const renderFileName = (name: string) => {
   const parts = name.split("/");
@@ -47,6 +49,7 @@ const FileListRow = ({
   onEdit,
   onRename,
   onRevertName,
+  onPreview,
 }: {
   file: FileListItem;
   onRemove?: () => void;
@@ -54,6 +57,7 @@ const FileListRow = ({
   onEdit?: () => void;
   onRename?: (name: string) => void; // StundTransfer
   onRevertName?: () => void; // StundTransfer
+  onPreview?: () => void; // StundTransfer
 }) => {
   {
     const uploadable = "uploadingProgress" in file;
@@ -85,6 +89,7 @@ const FileListRow = ({
               originalName={originalNameOf(file)}
               onRename={onRename}
               onRevert={onRevertName}
+              onPreview={onPreview}
             />
           ) : (
             renderFileName(fileNameOrPath)
@@ -196,6 +201,7 @@ const FileList = <T extends FileListItem = FileListItem>({
     updated[index] = file as unknown as T;
     setFiles(updated);
   };
+  const [preview, setPreview] = useState<PreviewFile>();
   const rename = (index: number, name: string) =>
     replaceUpload(index, renameUpload(files[index] as FileUpload, name));
   const revertName = (index: number) =>
@@ -210,24 +216,34 @@ const FileList = <T extends FileListItem = FileListItem>({
       onEdit={() => edit(i)}
       onRename={(name) => rename(i, name)}
       onRevertName={() => revertName(i)}
+      onPreview={() =>
+        setPreview({
+          name: getFileNameOrPath(file).split("/").pop() ?? "",
+          file: file as unknown as File,
+        })
+      }
     />
   ));
 
   return (
-    <Table>
-      <thead>
-        <tr>
-          <th>
-            <FormattedMessage id="upload.filelist.name" />
-          </th>
-          <th>
-            <FormattedMessage id="upload.filelist.size" />
-          </th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </Table>
+    <>
+      <Table>
+        <thead>
+          <tr>
+            <th>
+              <FormattedMessage id="upload.filelist.name" />
+            </th>
+            <th>
+              <FormattedMessage id="upload.filelist.size" />
+            </th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </Table>
+      {/* StundTransfer: eye of the files to send (read on this computer) */}
+      <PreviewModal file={preview} onClose={() => setPreview(undefined)} />
+    </>
   );
 };
 

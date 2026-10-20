@@ -1,7 +1,8 @@
-// StundTransfer: preview of a file on the download pages (eye icon), like on
-// Drive or the NAS: videos and sounds are read straight from the server (the
+// StundTransfer: preview of a file (eye icon), like on Drive or the NAS. On the
+// download pages, videos and sounds are read straight from the server (the
 // browser asks for the parts it needs, so it starts at once and can jump
-// anywhere, even in a 60 GB rush), pictures are shown, texts are read.
+// anywhere, even in a 60 GB rush). Before an upload, the file is read on this
+// computer, nothing is sent. Pictures are shown, texts are read.
 import {
   ActionIcon,
   Box,
@@ -18,7 +19,20 @@ import { TbAlertTriangle, TbEye } from "react-icons/tb";
 import useTranslate from "../hooks/useTranslate.hook";
 
 export type PreviewKind = "video" | "audio" | "image" | "text";
-export type PreviewFile = { name: string; url: string };
+// url: on the server; file: still on this computer (before sending it)
+export type PreviewFile = { name: string; url?: string; file?: Blob };
+
+/** Address the browser reads: the server one, or one for the local file. */
+const useSource = (file: PreviewFile) => {
+  const [local, setLocal] = useState<string>();
+  useEffect(() => {
+    if (!file.file) return;
+    const address = URL.createObjectURL(file.file);
+    setLocal(address);
+    return () => URL.revokeObjectURL(address);
+  }, [file.file]);
+  return file.url ?? local;
+};
 
 const KINDS: Record<PreviewKind, string[]> = {
   video: ["mp4", "m4v", "mov", "webm", "mkv", "ogv"],
@@ -53,11 +67,22 @@ export function previewKind(name: string): PreviewKind | null {
 // Texts: the beginning is enough to see what it is
 const TEXT_BYTES = 1024 * 1024;
 
-const TextContent = ({ url }: { url: string }) => {
+const TextContent = ({ file }: { file: PreviewFile }) => {
   const t = useTranslate();
   const [text, setText] = useState<string | null>();
   const [cut, setCut] = useState(false);
   useEffect(() => {
+    if (file.file) {
+      const local = file.file;
+      setCut(local.size > TEXT_BYTES);
+      local
+        .slice(0, TEXT_BYTES)
+        .text()
+        .then(setText)
+        .catch(() => setText(null));
+      return;
+    }
+    const url = file.url ?? "";
     const controller = new AbortController();
     fetch(url, {
       headers: { Range: `bytes=0-${TEXT_BYTES - 1}` },
@@ -73,7 +98,7 @@ const TextContent = ({ url }: { url: string }) => {
       })
       .catch(() => !controller.signal.aborted && setText(null));
     return () => controller.abort();
-  }, [url]);
+  }, [file]);
 
   if (text === undefined)
     return (
@@ -132,11 +157,13 @@ const MediaContent = ({
   file: PreviewFile;
 }) => {
   const [failed, setFailed] = useState(false);
+  const src = useSource(file);
   if (failed) return <Unreadable />;
+  if (!src) return null;
   if (kind === "video")
     return (
       <video
-        src={file.url}
+        src={src}
         controls
         autoPlay
         playsInline
@@ -153,7 +180,7 @@ const MediaContent = ({
   if (kind === "audio")
     return (
       <audio
-        src={file.url}
+        src={src}
         controls
         autoPlay
         onError={() => setFailed(true)}
@@ -164,7 +191,7 @@ const MediaContent = ({
     <Center>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={file.url}
+        src={src}
         alt={file.name}
         onError={() => setFailed(true)}
         style={{ maxWidth: "100%", maxHeight: "75vh", borderRadius: 8 }}
@@ -199,7 +226,7 @@ export const PreviewModal = ({
       {file &&
         kind &&
         (kind === "text" ? (
-          <TextContent url={file.url} />
+          <TextContent file={file} />
         ) : (
           <MediaContent kind={kind} file={file} />
         ))}
@@ -211,9 +238,12 @@ export const PreviewModal = ({
 export const PreviewButton = ({
   name,
   onClick,
+  compact = false,
 }: {
   name: string;
   onClick: () => void;
+  // Small, like the pencil of the lists of files to send
+  compact?: boolean;
 }) => {
   const t = useTranslate();
   if (!previewKind(name)) return null;
@@ -222,10 +252,11 @@ export const PreviewButton = ({
       <ActionIcon
         variant="subtle"
         color="gray"
+        size={compact ? "sm" : undefined}
         aria-label={`${t("stundtransfer.preview.open")} ${name}`}
         onClick={onClick}
       >
-        <TbEye size="1.1rem" />
+        <TbEye size={compact ? 14 : "1.1rem"} />
       </ActionIcon>
     </Tooltip>
   );

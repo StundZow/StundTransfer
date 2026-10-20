@@ -43,6 +43,7 @@ import useTranslate from "../hooks/useTranslate.hook";
 import toast from "../utils/toast.util";
 import DepositDropzone from "./DepositDropzone";
 import SelectedFileRow from "./SelectedFileRow";
+import { PreviewFile, PreviewModal } from "./FilePreview";
 import {
   SelectedFile,
   automaticNames,
@@ -167,6 +168,8 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
   const [selected, setSelected] = useState<SelectedFile[]>([]);
   const [ignored, setIgnored] = useState(0);
   const [progress, setProgress] = useState<UploadProgress>();
+  // File shown by the eye of the list (read on this computer)
+  const [preview, setPreview] = useState<PreviewFile>();
   // A call before or after the chunks is being retried (network or server down)
   const [retrying, setRetrying] = useState(false);
   const modals = useModals();
@@ -606,6 +609,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
             onRename={renameFile}
             onRevert={revertFile}
             onRemove={removeFile}
+            onPreview={setPreview}
           />
         ))}
         {selected.length > FILE_PREVIEW_COUNT && (
@@ -616,6 +620,7 @@ const DepositPage = ({ token, info }: { token?: string; info: LinkInfo }) => {
           </Text>
         )}
       </Stack>
+      <PreviewModal file={preview} onClose={() => setPreview(undefined)} />
       {ignored > 0 && (
         <Text size="xs" color="dimmed" mt="xs">
           {t("stundtransfer.files.ignored", { count: ignored })}

@@ -1,5 +1,6 @@
-// StundTransfer: one file of the deposit page list. Pencil to rename it,
-// round arrow to restore the original name (shown struck through when renamed).
+// StundTransfer: one file of the deposit page list. Eye to preview it (read on
+// this computer, nothing sent), pencil to rename it, round arrow to restore
+// the original name (shown struck through when renamed).
 // Memoized: with hundreds of files, typing in the form stays fluid.
 import {
   ActionIcon,
@@ -14,6 +15,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { TbCheck, TbPencil, TbRotate } from "react-icons/tb";
 import useTranslate from "../hooks/useTranslate.hook";
 import { SelectedFile, baseName, cleanNewName } from "./depositFiles";
+import { PreviewButton, PreviewFile } from "./FilePreview";
 
 const SelectedFileRow = ({
   file,
@@ -22,6 +24,7 @@ const SelectedFileRow = ({
   onRename,
   onRevert,
   onRemove,
+  onPreview,
 }: {
   file: SelectedFile;
   // Name used on the NAS (chosen, automatic or original)
@@ -31,6 +34,7 @@ const SelectedFileRow = ({
   onRename: (path: string, name: string | undefined) => void;
   onRevert: (path: string) => void;
   onRemove: (path: string) => void;
+  onPreview: (file: PreviewFile) => void;
 }) => {
   const t = useTranslate();
   const [editing, setEditing] = useState(false);
@@ -127,6 +131,11 @@ const SelectedFileRow = ({
               </Text>
             </Box>
           </Text>
+          <PreviewButton
+            compact
+            name={name}
+            onClick={() => onPreview({ name, file: file.file })}
+          />
           <Tooltip label={t("stundtransfer.files.rename")} withArrow>
             <ActionIcon
               size="sm"

@@ -6,18 +6,22 @@ import { useEffect, useRef, useState } from "react";
 import { TbCheck, TbPencil, TbRotate } from "react-icons/tb";
 import useTranslate from "../hooks/useTranslate.hook";
 import { baseName, cleanNewName } from "./depositFiles";
+import { PreviewButton } from "./FilePreview";
 
 const RenamableFileName = ({
   path,
   originalName,
   onRename,
   onRevert,
+  onPreview,
 }: {
   // "folders/name" as it will be sent
   path: string;
   originalName?: string;
   onRename: (name: string) => void;
   onRevert: () => void;
+  // Eye: preview the file, read on this computer
+  onPreview?: () => void;
 }) => {
   const t = useTranslate();
   const [editing, setEditing] = useState(false);
@@ -95,6 +99,7 @@ const RenamableFileName = ({
         )}
         <span style={folders ? { fontWeight: 600 } : undefined}>{name}</span>
       </Box>
+      {onPreview && <PreviewButton compact name={name} onClick={onPreview} />}
       <Tooltip label={t("stundtransfer.files.rename")} withArrow>
         <ActionIcon
           size="sm"
