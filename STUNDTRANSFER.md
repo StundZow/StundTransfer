@@ -84,8 +84,9 @@ services:
       # Dossier partagé visible par l'appli ; le dossier de réception se choisit dedans
       - STUNDTRANSFER_ROOT_DIR=/nas
       - STUNDTRANSFER_ROOT_NAME=A - STUND - NAS
-      # Envois en cours : même dossier partagé (rangement instantané)
-      - STUNDTRANSFER_STAGING_DIR=/nas/5 - StundTransfer/.en-cours
+      # Envois en cours : .stundtransfer-en-cours à la racine du dossier monté
+      # (par défaut). Ne pas le mettre dans le dossier de réception : renommer
+      # ce dossier ferait recréer l'ancien pour les fichiers temporaires.
     volumes:
       - /volume1/docker/pingvin/data:/opt/app/backend/data
       - /volume1/docker/pingvin/data/images:/opt/app/frontend/public/img
